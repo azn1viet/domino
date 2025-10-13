@@ -439,7 +439,7 @@
         <option value="500000">500000</option>
         <option value="1000000">1000000</option>
     </select>
-    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.0.9</div>
+    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.1.0</div>
 
 <script>
 let audioContext = null;
@@ -1031,10 +1031,12 @@ function playTile(gameState, tile, end) {
         return false;
     }
 
-    // Check if the current player had a non-blocking alternative BEFORE the move is made.
+    // FIXED: Calculate hadAlternativeMove BEFORE removing the tile from hand
     const boardBeforePlay = board.leftEnd ? { leftEnd: {...board.leftEnd}, rightEnd: {...board.rightEnd} } : { leftEnd: null };
     const playersCopy = JSON.parse(JSON.stringify(players));
-    const hadAlternativeMove = hasNonBlockingAlternative(playersCopy[currentPlayer], boardBeforePlay, playersCopy, currentPlayer);
+    const hadAlternativeMove = boardBeforePlay.leftEnd 
+        ? hasNonBlockingAlternative(playersCopy[currentPlayer], boardBeforePlay, playersCopy, currentPlayer)
+        : true; // First move always considered as having alternative
 
     const { V_W, V_H, H_W, H_H, FULL, OFFSET } = getTileSizes();
 
@@ -1050,7 +1052,7 @@ function playTile(gameState, tile, end) {
         gameState.selectedIndex = -1;
     }
     
-    // Log the move to round history with the correct flag
+    // Log the move to round history with the CORRECT flag calculated above
     if(roundHistory) {
         roundHistory.push({
             player: currentPlayer,
@@ -1074,7 +1076,6 @@ function playTile(gameState, tile, end) {
     if (isFirst) {
         const isFirstDouble = isDouble(playedTile);
         if (isFirstDouble) {
-            // Fixed: Place first double vertically
             isHorizontal = false;
             x = tableRect.width / 2 - V_W / 2;
             y = tableRect.height / 2 - V_H / 2;
@@ -1086,7 +1087,6 @@ function playTile(gameState, tile, end) {
             board.leftEnd = { value: playedTile.top, x: centerX, y: topY, dir: 'left', openSide: 'up' };
             board.rightEnd = { value: playedTile.bottom, x: centerX, y: bottomY, dir: 'right', openSide: 'down' };
         } else {
-            // Original horizontal for non-double first
             x = tableRect.width / 2 - H_W / 2;
             y = tableRect.height / 2 - H_H / 2;
             isHorizontal = true;
@@ -1099,7 +1099,7 @@ function playTile(gameState, tile, end) {
         }
     } else {
         e = (end === 'left') ? board.leftEnd : board.rightEnd;
-        const placement = calculatePlacement(board, end, tableRect, playedTile); // Pass tile for double priority
+        const placement = calculatePlacement(board, end, tableRect, playedTile);
         x = placement.x;
         y = placement.y;
         isHorizontal = placement.isHorizontal;
@@ -1126,7 +1126,6 @@ function playTile(gameState, tile, end) {
                 displayBottom = connectingValue;
             }
         } else {
-            // Vertical turn
             if (turnDir === 'up') {
                 displayTop = newEndValue;
                 displayBottom = connectingValue;
@@ -1162,7 +1161,6 @@ function playTile(gameState, tile, end) {
     tableDiv.appendChild(tileDiv);
     board.tiles.push({ tile: { top: displayTop, bottom: displayBottom }, x, y, isHorizontal });
     
-    // Set tileIndex for the ends
     const pushedIndex = board.tiles.length - 1;
     if (board.tiles.length === 1) {
         board.leftEnd.tileIndex = pushedIndex;
@@ -1189,13 +1187,11 @@ function playTile(gameState, tile, end) {
     let nextIndex = (currentIndex + 1) % numPlayers;
     let nextPlayer = playerOrder[nextIndex];
 
-    // Check if immediate next can play
     if (!players[nextPlayer].some(t => canPlayTile(t, board))) {
         firstSkipped = nextPlayer;
         checkedPlayers = 1;
         nextIndex = (nextIndex + 1) % numPlayers;
         nextPlayer = playerOrder[nextIndex];
-        // Continue skipping
         while (checkedPlayers < numPlayers && !players[nextPlayer].some(t => canPlayTile(t, board))) {
             checkedPlayers++;
             nextIndex = (nextIndex + 1) % numPlayers;
@@ -1204,7 +1200,6 @@ function playTile(gameState, tile, end) {
     }
 
     if (checkedPlayers === numPlayers) {
-        // Game is blocked - determine if it was intentional
         handleBlockedGame(gameState, lastValidPlayer, firstSkipped, playedTile, end);
         return true;
     }
