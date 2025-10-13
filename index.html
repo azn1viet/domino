@@ -616,6 +616,8 @@ function setupGame() {
         offsetY: 0
     };
     
+    let requiredFirstTile = null; // New: To store the mandatory starting tile
+
     // Determine the starting player
     if (isFirstGameEver) {
         // For the very first game, find the player with the highest double
@@ -625,6 +627,7 @@ function setupGame() {
             for (let p = 0; p < numPlayers; p++) {
                 if (players[p].some(t => t.top === n && t.bottom === n)) {
                     starter = p;
+                    requiredFirstTile = { top: n, bottom: n }; // New: Store the required tile
                     found = true;
                     break;
                 }
@@ -640,7 +643,7 @@ function setupGame() {
     const roundHistory = [];
 
 
-    return {players, boneyard, board, prevBoard: null, gameOver: false, roundHistory, selectedIndex: -1};
+    return {players, boneyard, board, prevBoard: null, gameOver: false, roundHistory, selectedIndex: -1, requiredFirstTile};
 }
 function isDouble(tile) {
     return tile.top === tile.bottom;
@@ -747,8 +750,16 @@ function countAllPips(players, roundHistory) {
 }
 
 function playAI(gameState) {
-    const { players, board, roundHistory } = gameState;
+    const { players, board, roundHistory, requiredFirstTile } = gameState; // Add requiredFirstTile
     const playerHand = players[currentPlayer];
+
+    // New: Handle mandatory first move
+    if (board.tiles.length === 0 && requiredFirstTile) {
+        // If the AI is the starter, it must play the required highest double.
+        playTile(gameState, requiredFirstTile, 'right');
+        return;
+    }
+    
     let bestMove = { tile: null, end: null, score: -Infinity };
 
     const validMoves = [];
@@ -1023,12 +1034,25 @@ function handleTileClick(gameState, tileIndex, playButtons) {
 }
 
 function playTile(gameState, tile, end) {
-    const { players, board, roundHistory } = gameState;
+    const { players, board, roundHistory, requiredFirstTile } = gameState; // Add requiredFirstTile
     const playerHand = players[currentPlayer];
     const tileIndex = playerHand.findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
     
-    if (tileIndex === -1 || !canPlayTile(tile, board)) {
-        alert("Invalid move!");
+    if (tileIndex === -1) {
+        // This case should ideally not be reached with proper UI controls.
+        return false;
+    }
+
+    // New: Enforce the starting tile rule
+    const isFirstMoveOfGame = board.tiles.length === 0;
+    if (isFirstMoveOfGame && requiredFirstTile) {
+        if (tile.top !== requiredFirstTile.top || tile.bottom !== requiredFirstTile.bottom) {
+            alert(`You must start the game with your highest double: ${requiredFirstTile.top}-${requiredFirstTile.bottom}.`);
+            return false;
+        }
+    } else if (!isFirstMoveOfGame && !canPlayTile(tile, board)) {
+        // For any move other than the first, check if it's a valid play on the ends.
+        alert("Invalid move! This tile doesn't match the ends of the board.");
         return false;
     }
 
@@ -1753,7 +1777,19 @@ function renderGame(gameState) {
                 
                 if (!gameOver && index === 0) {
                     // Check if playable
-                    const isPlayable = (board.tiles.length === 0) || canPlayTile(tile, board);
+                    const { requiredFirstTile } = gameState;
+                    const isFirstMoveOfGame = board.tiles.length === 0 && requiredFirstTile;
+                    
+                    let isPlayable = false;
+                    if (isFirstMoveOfGame) {
+                        // On the first move, only the required double is playable
+                        isPlayable = tile.top === requiredFirstTile.top && tile.bottom === requiredFirstTile.bottom;
+                    } else {
+                        // For all other moves, use the standard canPlayTile check
+                        // Note: canPlayTile returns true for an empty board, so we only call it when not the first special move.
+                        isPlayable = board.tiles.length === 0 || canPlayTile(tile, board);
+                    }
+
                     if (isPlayable && currentPlayer === 0) {
                         tileDiv.classList.add('draggable');
                         tileDiv.draggable = true;
