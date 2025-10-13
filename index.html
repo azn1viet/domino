@@ -431,6 +431,7 @@
         <option value="Close">Close tiles</option>
         <option value="Open">Open tiles</option>
     </select>
+<div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.0.0</div>
     <select id="bets">
         <option value="1000">1000</option>
         <option value="10000" selected>10000</option>
@@ -1390,6 +1391,23 @@ function hasNonBlockingAlternative(hand, board, allPlayers, playerIndex) {
     return false;
 }
 
+function hasOnlyOnePossibleMove(hand, board) {
+    if (!board.leftEnd) {
+        // For the first move, all tiles are possible (on 'right'), so more than one unless hand has only one tile
+        return hand.length === 1;
+    }
+    let possibleMoves = [];
+    hand.forEach(tile => {
+        let ends = [];
+        if (canPlayOnEnd(tile, board.leftEnd.value)) ends.push('left');
+        if (canPlayOnEnd(tile, board.rightEnd.value)) ends.push('right');
+        ends.forEach(end => {
+            possibleMoves.push({tile, end});
+        });
+    });
+    return possibleMoves.length === 1;
+}
+
 function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPlayedTile, lastPlayedEnd) {
     gameState.gameOver = true;
     const { players, board, roundHistory } = gameState;
@@ -1413,11 +1431,11 @@ function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPla
         if (roundHistory.length >= 2 && roundHistory[roundHistory.length - 2].hadAlternativeMove) {
             const prevPlayer = roundHistory[roundHistory.length - 2].player;
             if (prevPlayer === lastPlayerWhoPlayed) {
-                // BUG FIX #1: Consecutive plays by same player
+                // Consecutive plays by same player
                 blocker = lastPlayerWhoPlayed;
                 assistant = -1;
             } else if (prevPlayer === getPreviousPlayer(lastPlayerWhoPlayed)) {
-                // BUG FIX #2: Last player is blocker, previous is assistant
+                // Last player is blocker, previous is assistant
                 blocker = lastPlayerWhoPlayed;
                 assistant = prevPlayer;
             }
@@ -1439,15 +1457,20 @@ function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPla
             }
         }
         if (remote !== -1) {
-            // BUG FIX #1: Check if remote blocker is same as last player (consecutive plays)
+            // Check if remote blocker is same as last player (consecutive plays)
             if (remote === lastPlayerWhoPlayed) {
                 blocker = remote;
                 updateScoresForIntentionalBlockNoAssist(blocker, gameState);
             } else if (remoteIndex === roundHistory.length - 2 && remote === getPreviousPlayer(lastPlayerWhoPlayed)) {
-                // BUG FIX #2: Previous player is blocker, last player is assistant
+                // Previous player is blocker, last player is assistant - but only if last had more than one possible move
                 blocker = remote;
-                assistant = lastPlayerWhoPlayed;
-                updateScoresForIntentionalBlockWithAssist(blocker, assistant, gameState);
+                if (!hasOnlyOnePossibleMove(handBeforePlay, prevBoard)) {
+                    assistant = lastPlayerWhoPlayed;
+                    updateScoresForIntentionalBlockWithAssist(blocker, assistant, gameState);
+                } else {
+                    // Last player had only one possible move: force block, no assist
+                    updateScoresForForceBlock(gameState);
+                }
             } else {
                 blocker = remote;
                 updateScoresForIntentionalBlockNoAssist(blocker, gameState);
