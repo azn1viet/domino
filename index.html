@@ -1017,32 +1017,15 @@ function playTile(gameState, tile, end) {
     let hadAlternativeEnd = false;
     if (board.leftEnd) { // Condition can only be checked after the first move
         const playableTiles = playerHand.filter(t => canPlayTile(t, board));
-        const hadAlternativeTile = playableTiles.length > 1;
-        let hadAlternativeEnd = false;
-        let possibleEndsForTile = 0;
-        if (tile.top === board.leftEnd.value || tile.bottom === board.leftEnd.value) possibleEndsForTile++;
-        if (tile.top === board.rightEnd.value || tile.bottom === board.rightEnd.value) possibleEndsForTile++;
-        hadAlternativeEnd = possibleEndsForTile > 1;
-        const hadAlternativeMove = hadAlternativeTile || hadAlternativeEnd;
-        // Log to roundHistory
-        if (roundHistory) {
-            roundHistory.push({
-                player: currentPlayer,
-                playedTile: {...tile},
-                end: end,
-                boardBefore: gameState.prevBoard,
-                hadAlternativeMove: hadAlternativeMove
-            });
-        }
-    } else {
-        if (roundHistory) {
-            roundHistory.push({
-                player: currentPlayer,
-                playedTile: {...tile},
-                end: end,
-                boardBefore: gameState.prevBoard,
-                hadAlternativeMove: false // First move, no alternative
-            });
+        if (playableTiles.length === 1) {
+            const theOnlyTile = playableTiles[0];
+            if (theOnlyTile.top === tile.top && theOnlyTile.bottom === tile.bottom) {
+                const canPlayLeft = (theOnlyTile.top === board.leftEnd.value || theOnlyTile.bottom === board.leftEnd.value);
+                const canPlayRight = (theOnlyTile.top === board.rightEnd.value || theOnlyTile.bottom === board.rightEnd.value);
+                if (canPlayLeft && canPlayRight) {
+                    hadAlternativeEnd = true;
+                }
+            }
         }
     }
 
@@ -1051,6 +1034,17 @@ function playTile(gameState, tile, end) {
     // Reset selection if player 0 played
     if (currentPlayer === 0) {
         gameState.selectedIndex = -1;
+    }
+    
+    // NEW: Log the move to round history
+    if(roundHistory) {
+        roundHistory.push({
+            player: currentPlayer,
+            playedTile: {...playedTile},
+            end: end,
+            boardBefore: gameState.prevBoard,
+            hadAlternativeEnd: hadAlternativeEnd
+        });
     }
     
     const tableDiv = document.getElementById('table');
@@ -1241,7 +1235,8 @@ function updateScoresForIntentionalBlockWithAssist(blocker, assistant, gameState
     let values = computePlayerValues(gameState.players);
     let minAll = Math.min(...values);
     let blockerValue = values[blocker];
-    let payAmount = 2 * blockerValue * bet;
+    let totalValue = values.reduce((a, b) => a + b, 0);
+    let payAmount = 2 * totalValue * bet;
     let message;
     if (blockerValue <= minAll) {
         // blocker wins, assistant pays to blocker
