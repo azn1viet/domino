@@ -431,7 +431,7 @@
         <option value="Close">Close tiles</option>
         <option value="Open">Open tiles</option>
     </select>
-<div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.0.2</div>
+<div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.0.3</div>
     <select id="bets">
         <option value="1000">1000</option>
         <option value="10000" selected>10000</option>
@@ -1390,10 +1390,8 @@ function hasNonBlockingAlternative(hand, board, allPlayers, playerIndex) {
     }
     return false;
 }
-
 function hasOnlyOnePossibleMove(hand, board) {
     if (!board.leftEnd) {
-        // For the first move, all tiles are possible (on 'right'), so more than one unless hand has only one tile
         return hand.length === 1;
     }
     let possibleMoves = [];
@@ -1414,13 +1412,47 @@ function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPla
     
     const prevBoard = gameState.prevBoard;
     if (!prevBoard) {
+        // No previous board, force block
         updateScoresForForceBlock(gameState);
         renderGame(gameState);
         showNewGameButton();
         return;
     }
     
-    const handBeforePlay = [...players[lastPlayerWhoPlayed], lastPlayedTile];
+    // Check if the last player emptied their hand with the blocking play
+    if (players[lastPlayerWhoPlayed].length === 0 && lastPlayedTile) {
+        const handBeforePlay = [...players[lastPlayerWhoPlayed], lastPlayedTile];
+        const hadAlternative = hasNonBlockingAlternative(handBeforePlay, prevBoard, players, lastPlayerWhoPlayed);
+        if (!hadAlternative) {
+            // Force block win by the player who emptied (no assist, as all moves led to block, and per rule, only 1 way means non-assisted)
+            updateScoresForForceBlockWin(lastPlayerWhoPlayed, gameState);
+        } else {
+            // Intentional block win by emptying
+            let assistant = -1;
+            if (roundHistory.length >= 2 && roundHistory[roundHistory.length - 2].hadAlternativeMove) {
+                const prevPlayer = roundHistory[roundHistory.length - 2].player;
+                if (prevPlayer !== lastPlayerWhoPlayed) {
+                    // Check if previous had only one possible move (non-assisted rule)
+                    // Note: To fully implement, store 'hadOnlyOneWay' in roundHistory or recalculate if possible
+                    // For now, assume if !roundHistory[roundHistory.length - 2].hadOnlyOneWay (add this field when pushing)
+                    // If had only one way, skip assist
+                    if (roundHistory[roundHistory.length - 2].hadOnlyOneWay !== true) {
+                        assistant = prevPlayer;
+                    }
+                }
+            }
+            if (assistant !== -1) {
+                updateScoresForIntentionalBlockWithAssist(lastPlayerWhoPlayed, assistant, gameState);
+            } else {
+                updateScoresForIntentionalBlockNoAssist(lastPlayerWhoPlayed, gameState);
+            }
+        }
+        renderGame(gameState);
+        showNewGameButton();
+        return;
+    }
+    
+    const handBeforePlay = lastPlayedTile ? [...players[lastPlayerWhoPlayed], lastPlayedTile] : [...players[lastPlayerWhoPlayed]];
     const lastHadAlternativeMove = hasNonBlockingAlternative(handBeforePlay, prevBoard, players, lastPlayerWhoPlayed);
     
     let blocker = lastPlayerWhoPlayed;
@@ -1435,9 +1467,12 @@ function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPla
                 blocker = lastPlayerWhoPlayed;
                 assistant = -1;
             } else if (prevPlayer === getPreviousPlayer(lastPlayerWhoPlayed)) {
-                // Last player is blocker, previous is assistant (since previous had alternatives, set up the block)
+                // Last player is blocker, previous is assistant
                 blocker = lastPlayerWhoPlayed;
-                assistant = prevPlayer;
+                // Check if previous had only one way (non-assisted)
+                if (roundHistory[roundHistory.length - 2].hadOnlyOneWay !== true) {
+                    assistant = prevPlayer;
+                }
             }
         }
         if (assistant !== -1) {
@@ -1449,26 +1484,26 @@ function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPla
         // Last player had no alternatives - search for remote blocker
         let remote = -1;
         let remoteIndex = -1;
+        // Skip skip entries in search (assume roundHistory entries with tile === null are skips)
         for (let i = roundHistory.length - 2; i >= 0; i--) {
-            if (roundHistory[i].hadAlternativeMove) {
+            if (roundHistory[i].tile !== null && roundHistory[i].hadAlternativeMove) {  // Only consider actual plays with alternative
                 remote = roundHistory[i].player;
                 remoteIndex = i;
                 break;
             }
         }
         if (remote !== -1) {
-            // Check if remote blocker is same as last player (consecutive plays)
             if (remote === lastPlayerWhoPlayed) {
                 blocker = remote;
                 updateScoresForIntentionalBlockNoAssist(blocker, gameState);
             } else if (remoteIndex === roundHistory.length - 2 && remote === getPreviousPlayer(lastPlayerWhoPlayed)) {
-                // Previous player is blocker, last player is assistant - but only if last had more than one possible move
                 blocker = remote;
                 if (!hasOnlyOnePossibleMove(handBeforePlay, prevBoard)) {
+                    // Check if the would-be assistant (last) had only one way? But for last, already in condition
+                    // For the blocker (remote), no need
                     assistant = lastPlayerWhoPlayed;
                     updateScoresForIntentionalBlockWithAssist(blocker, assistant, gameState);
                 } else {
-                    // Last player had only one possible move: force block, no assist
                     updateScoresForForceBlock(gameState);
                 }
             } else {
@@ -1483,6 +1518,7 @@ function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPla
     renderGame(gameState);
     showNewGameButton();
 }
+
 function getPlayerNumber(index) {
     return index + 1;
 }
