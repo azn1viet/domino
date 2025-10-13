@@ -1234,8 +1234,7 @@ function updateScoresForWin(winner, gameState) {
     }
     scores[winner] += pot;
     nextGameStarter = winner;
-    let message = `Normal win for Player ${getPlayerNumber(winner)}!\n\n`;
-    message += `Player ${getPlayerNumber(winner)} wins ${abbreviate(pot)}\n\n`;
+    let message = `Player ${getPlayerNumber(winner)} wins ${abbreviate(pot)}\n\n`;
     for (let i = 0; i < numPlayers; i++) {
         if (i !== winner) {
             let pay = values[i] * bet;
