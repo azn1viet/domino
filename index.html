@@ -439,7 +439,7 @@
         <option value="500000">500000</option>
         <option value="1000000">1000000</option>
     </select>
-    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.0.5</div>
+    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.0.6</div>
 
 <script>
 let audioContext = null;
@@ -1661,6 +1661,7 @@ function renderGame(gameState) {
                             ghost.style.top = `${touch.clientY - ghost.offsetHeight / 2}px`;
                             let moved = false;
                             const onTouchMove = (ev) => {
+                                ev.preventDefault(); // This is the fix for drag sensitivity
                                 if (ev.touches.length === 1) {
                                     moved = true;
                                     const t = ev.touches[0];
