@@ -707,6 +707,42 @@ function simulatePlay(board, tile, end) {
     return {leftEnd: simLeftEnd, rightEnd: simRightEnd};
 }
 
+function hasNonBlockingAlternative(playerHand, board, players, currentPlayer) {
+    let hadNonBlockingPlay = false;
+    for (let testTile of playerHand) {
+        let testPossibleEnds = [];
+        if (!board.leftEnd) {
+            testPossibleEnds.push('right');
+        } else {
+            if (testTile.top === board.leftEnd.value || testTile.bottom === board.leftEnd.value) testPossibleEnds.push('left');
+            if (testTile.top === board.rightEnd.value || testTile.bottom === board.rightEnd.value) testPossibleEnds.push('right');
+        }
+        
+        if (testPossibleEnds.length > 0) {
+            for (let testEnd of testPossibleEnds) {
+                const testSimEnds = simulatePlay(board, testTile, testEnd);
+                const testSimBoard = {leftEnd: testSimEnds.leftEnd, rightEnd: testSimEnds.rightEnd};
+                
+                let othersCouldContinue = false;
+                for (let p = 0; p < numPlayers; p++) {
+                    if (p === currentPlayer) continue;
+                    if (players[p].some(t => canPlayTile(t, testSimBoard))) {
+                        othersCouldContinue = true;
+                        break;
+                    }
+                }
+                
+                if (othersCouldContinue) {
+                    hadNonBlockingPlay = true;
+                    break;
+                }
+            }
+            if (hadNonBlockingPlay) break;
+        }
+    }
+    return hadNonBlockingPlay;
+}
+
 function playAI(gameState) {
     const { players, board } = gameState;
     const playerHand = players[currentPlayer];
@@ -1006,28 +1042,19 @@ function playTile(gameState, tile, end) {
         return false;
     }
 
+    if (board.leftEnd && !canPlayOnEnd(tile, board[end === 'left' ? 'leftEnd' : 'rightEnd'].value)) {
+        alert("Invalid move!");
+        return false;
+    }
+
+    const hadAlternativeMove = hasNonBlockingAlternative(playerHand, board, players, currentPlayer);
+
     const { V_W, V_H, H_W, H_H, FULL, OFFSET } = getTileSizes();
 
     gameState.prevBoard = board.leftEnd ? {
         leftEnd: {...board.leftEnd}, 
         rightEnd: {...board.rightEnd}
     } : null;
-
-    // NEW: Check for the special blocking condition
-    let hadAlternativeEnd = false;
-    if (board.leftEnd) { // Condition can only be checked after the first move
-        const playableTiles = playerHand.filter(t => canPlayTile(t, board));
-        if (playableTiles.length === 1) {
-            const theOnlyTile = playableTiles[0];
-            if (theOnlyTile.top === tile.top && theOnlyTile.bottom === tile.bottom) {
-                const canPlayLeft = (theOnlyTile.top === board.leftEnd.value || theOnlyTile.bottom === board.leftEnd.value);
-                const canPlayRight = (theOnlyTile.top === board.rightEnd.value || theOnlyTile.bottom === board.rightEnd.value);
-                if (canPlayLeft && canPlayRight) {
-                    hadAlternativeEnd = true;
-                }
-            }
-        }
-    }
 
     const playedTile = playerHand.splice(tileIndex, 1)[0];
     
@@ -1043,7 +1070,7 @@ function playTile(gameState, tile, end) {
             playedTile: {...playedTile},
             end: end,
             boardBefore: gameState.prevBoard,
-            hadAlternativeEnd: hadAlternativeEnd
+            hadAlternativeMove: hadAlternativeMove
         });
     }
     
@@ -1375,40 +1402,8 @@ function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPla
     // Reconstruct the hand before the play for last player
     const handBeforePlay = [...players[lastPlayerWhoPlayed], lastPlayedTile];
     
-    // Check if last player had non-blocking play or multiple playable tiles
-    let hadNonBlockingPlay = false;
-    let playableTilesCount = 0;
-    
-    for (let testTile of handBeforePlay) {
-        let testPossibleEnds = [];
-        if (testTile.top === prevBoard.leftEnd.value || testTile.bottom === prevBoard.leftEnd.value) testPossibleEnds.push('left');
-        if (testTile.top === prevBoard.rightEnd.value || testTile.bottom === prevBoard.rightEnd.value) testPossibleEnds.push('right');
-        
-        if (testPossibleEnds.length > 0) {
-            playableTilesCount++;
-            for (let testEnd of testPossibleEnds) {
-                const testSimEnds = simulatePlay(prevBoard, testTile, testEnd);
-                const testSimBoard = {leftEnd: testSimEnds.leftEnd, rightEnd: testSimEnds.rightEnd};
-                
-                let othersCouldContinue = false;
-                for (let p = 0; p < numPlayers; p++) {
-                    if (p === lastPlayerWhoPlayed) continue;
-                    if (players[p].some(t => canPlayTile(t, testSimBoard))) {
-                        othersCouldContinue = true;
-                        break;
-                    }
-                }
-                
-                if (othersCouldContinue) {
-                    hadNonBlockingPlay = true;
-                    break;
-                }
-            }
-            if (hadNonBlockingPlay) break;
-        }
-    }
-    
-    const lastHadAlternativeMove = hadNonBlockingPlay || playableTilesCount > 1;
+    // Check if last player had non-blocking alternative
+    const lastHadAlternativeMove = hasNonBlockingAlternative(handBeforePlay, prevBoard, players, lastPlayerWhoPlayed);
     
     let blocker = lastPlayerWhoPlayed;
     let assistant = -1;
