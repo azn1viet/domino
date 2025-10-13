@@ -707,42 +707,6 @@ function simulatePlay(board, tile, end) {
     return {leftEnd: simLeftEnd, rightEnd: simRightEnd};
 }
 
-function hasNonBlockingAlternative(playerHand, board, players, currentPlayer) {
-    let hadNonBlockingPlay = false;
-    for (let testTile of playerHand) {
-        let testPossibleEnds = [];
-        if (!board.leftEnd) {
-            testPossibleEnds.push('right');
-        } else {
-            if (testTile.top === board.leftEnd.value || testTile.bottom === board.leftEnd.value) testPossibleEnds.push('left');
-            if (testTile.top === board.rightEnd.value || testTile.bottom === board.rightEnd.value) testPossibleEnds.push('right');
-        }
-        
-        if (testPossibleEnds.length > 0) {
-            for (let testEnd of testPossibleEnds) {
-                const testSimEnds = simulatePlay(board, testTile, testEnd);
-                const testSimBoard = {leftEnd: testSimEnds.leftEnd, rightEnd: testSimEnds.rightEnd};
-                
-                let othersCouldContinue = false;
-                for (let p = 0; p < numPlayers; p++) {
-                    if (p === currentPlayer) continue;
-                    if (players[p].some(t => canPlayTile(t, testSimBoard))) {
-                        othersCouldContinue = true;
-                        break;
-                    }
-                }
-                
-                if (othersCouldContinue) {
-                    hadNonBlockingPlay = true;
-                    break;
-                }
-            }
-            if (hadNonBlockingPlay) break;
-        }
-    }
-    return hadNonBlockingPlay;
-}
-
 function playAI(gameState) {
     const { players, board } = gameState;
     const playerHand = players[currentPlayer];
@@ -1042,13 +1006,6 @@ function playTile(gameState, tile, end) {
         return false;
     }
 
-    if (board.leftEnd && !canPlayOnEnd(tile, board[end === 'left' ? 'leftEnd' : 'rightEnd'].value)) {
-        alert("Invalid move!");
-        return false;
-    }
-
-    const hadAlternativeMove = hasNonBlockingAlternative(playerHand, board, players, currentPlayer);
-
     const { V_W, V_H, H_W, H_H, FULL, OFFSET } = getTileSizes();
 
     gameState.prevBoard = board.leftEnd ? {
@@ -1056,22 +1013,44 @@ function playTile(gameState, tile, end) {
         rightEnd: {...board.rightEnd}
     } : null;
 
+    // NEW: Check for the special blocking condition
+    let hadAlternativeEnd = false;
+    if (board.leftEnd) { // Condition can only be checked after the first move
+        const playableTiles = playerHand.filter(t => canPlayTile(t, board));
+        const hadAlternativeTile = playableTiles.length > 1;
+        let hadAlternativeEnd = false;
+        let possibleEndsForTile = 0;
+        if (tile.top === board.leftEnd.value || tile.bottom === board.leftEnd.value) possibleEndsForTile++;
+        if (tile.top === board.rightEnd.value || tile.bottom === board.rightEnd.value) possibleEndsForTile++;
+        hadAlternativeEnd = possibleEndsForTile > 1;
+        const hadAlternativeMove = hadAlternativeTile || hadAlternativeEnd;
+        // Log to roundHistory
+        if (roundHistory) {
+            roundHistory.push({
+                player: currentPlayer,
+                playedTile: {...tile},
+                end: end,
+                boardBefore: gameState.prevBoard,
+                hadAlternativeMove: hadAlternativeMove
+            });
+        }
+    } else {
+        if (roundHistory) {
+            roundHistory.push({
+                player: currentPlayer,
+                playedTile: {...tile},
+                end: end,
+                boardBefore: gameState.prevBoard,
+                hadAlternativeMove: false // First move, no alternative
+            });
+        }
+    }
+
     const playedTile = playerHand.splice(tileIndex, 1)[0];
     
     // Reset selection if player 0 played
     if (currentPlayer === 0) {
         gameState.selectedIndex = -1;
-    }
-    
-    // NEW: Log the move to round history
-    if(roundHistory) {
-        roundHistory.push({
-            player: currentPlayer,
-            playedTile: {...playedTile},
-            end: end,
-            boardBefore: gameState.prevBoard,
-            hadAlternativeMove: hadAlternativeMove
-        });
     }
     
     const tableDiv = document.getElementById('table');
