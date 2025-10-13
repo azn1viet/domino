@@ -1032,7 +1032,7 @@ function playTile(gameState, tile, end) {
     } : null;
 
     // NEW: Check for the special blocking condition
-    let hadAlternativeEnd = false;
+   /* let hadAlternativeEnd = false;
     if (board.leftEnd) { // Condition can only be checked after the first move
         const playableTiles = playerHand.filter(t => canPlayTile(t, board));
         if (playableTiles.length === 1) {
@@ -1045,6 +1045,13 @@ function playTile(gameState, tile, end) {
                 }
             }
         }
+    }*/
+	// Check if player had a non-blocking alternative before this move
+    let hadAlternativeMove = false;
+    if (board.leftEnd) { // Can only check after the first move
+        // Create a copy of players state before this tile is removed
+        const playersBeforeMove = JSON.parse(JSON.stringify(players));
+        hadAlternativeMove = hasNonBlockingAlternative(playerHand, board, playersBeforeMove, currentPlayer);
     }
 
     const playedTile = playerHand.splice(tileIndex, 1)[0];
@@ -1061,7 +1068,7 @@ function playTile(gameState, tile, end) {
             playedTile: {...playedTile},
             end: end,
             boardBefore: gameState.prevBoard,
-            hadAlternativeEnd: hadAlternativeEnd
+            hadAlternativeEnd: hadAlternativeMove
         });
     }
     
@@ -1403,28 +1410,26 @@ function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPla
     
     const prevBoard = gameState.prevBoard;
     if (!prevBoard) {
-        // First tile played, no intentional block possible
         updateScoresForForceBlock(gameState);
         renderGame(gameState);
         showNewGameButton();
         return;
     }
     
-    // Reconstruct the hand before the play for last player
     const handBeforePlay = [...players[lastPlayerWhoPlayed], lastPlayedTile];
-    
-    // Check if last player had non-blocking alternative
     const lastHadAlternativeMove = hasNonBlockingAlternative(handBeforePlay, prevBoard, players, lastPlayerWhoPlayed);
     
     let blocker = lastPlayerWhoPlayed;
     let assistant = -1;
     
     if (lastHadAlternativeMove) {
-        // Intentional by last
-        // Check if immediate previous had alternative move
         if (roundHistory.length >= 2 && roundHistory[roundHistory.length - 2].hadAlternativeMove) {
             const prevPlayer = roundHistory[roundHistory.length - 2].player;
-            if (prevPlayer === getPreviousPlayer(lastPlayerWhoPlayed)) {
+            if (prevPlayer === lastPlayerWhoPlayed) {
+                blocker = lastPlayerWhoPlayed;
+                assistant = -1;
+            } else if (prevPlayer === getPreviousPlayer(lastPlayerWhoPlayed)) {
+                blocker = lastPlayerWhoPlayed;
                 assistant = prevPlayer;
             }
         }
@@ -1434,7 +1439,6 @@ function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPla
             updateScoresForIntentionalBlockNoAssist(blocker, gameState);
         }
     } else {
-        // Last had no alternative, search for remote
         let remote = -1;
         let remoteIndex = -1;
         for (let i = roundHistory.length - 2; i >= 0; i--) {
@@ -1445,18 +1449,18 @@ function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPla
             }
         }
         if (remote !== -1) {
-            if (remoteIndex === roundHistory.length - 2 && remote === getPreviousPlayer(lastPlayerWhoPlayed)) {
-                // Immediate previous, assisted case
+            if (remote === lastPlayerWhoPlayed) {
+                blocker = remote;
+                updateScoresForIntentionalBlockNoAssist(blocker, gameState);
+            } else if (remoteIndex === roundHistory.length - 2 && remote === getPreviousPlayer(lastPlayerWhoPlayed)) {
                 blocker = remote;
                 assistant = lastPlayerWhoPlayed;
                 updateScoresForIntentionalBlockWithAssist(blocker, assistant, gameState);
             } else {
-                // Further, no assist
                 blocker = remote;
                 updateScoresForIntentionalBlockNoAssist(blocker, gameState);
             }
         } else {
-            // Force block
             updateScoresForForceBlock(gameState);
         }
     }
