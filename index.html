@@ -750,12 +750,11 @@ function countAllPips(players, roundHistory) {
 }
 
 function playAI(gameState) {
-    const { players, board, roundHistory, requiredFirstTile } = gameState; // Add requiredFirstTile
+    const { players, board, roundHistory, requiredFirstTile } = gameState;
     const playerHand = players[currentPlayer];
 
-    // New: Handle mandatory first move
+    // Handle mandatory first move
     if (board.tiles.length === 0 && requiredFirstTile) {
-        // If the AI is the starter, it must play the required highest double.
         playTile(gameState, requiredFirstTile, 'right');
         return;
     }
@@ -773,7 +772,6 @@ function playAI(gameState) {
                 validMoves.push({ tile, end: 'left' });
             }
             if (canPlayRight) {
-                 // Prevent adding the same move twice for a double tile that can be played on either end
                 if (!isDouble(tile) || !canPlayLeft) {
                     validMoves.push({ tile, end: 'right' });
                 }
@@ -782,83 +780,56 @@ function playAI(gameState) {
     }
 
     if (validMoves.length === 0) {
-        // This case is handled by the main game loop, which skips the player's turn.
-        // AI function should not be called if there are no valid moves.
         return;
     }
-    
-    for (const move of validMoves) {
-        let score = 0;
-        const { tile, end } = move;
 
-        // --- Create a simulated game state after the move ---
-        const simBoard = simulatePlay(board, tile, end);
+    // --- Performance Refactor: Pre-calculate move outcomes ---
+    const movesWithResults = validMoves.map(move => {
+        const simBoard = simulatePlay(board, move.tile, move.end);
         const simPlayers = JSON.parse(JSON.stringify(players));
-        const tileIndex = simPlayers[currentPlayer].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
+        const tileIndex = simPlayers[currentPlayer].findIndex(t => t.top === move.tile.top && t.bottom === move.tile.bottom);
         simPlayers[currentPlayer].splice(tileIndex, 1);
-
-        // --- Rule 4: Highest priority is to win by emptying hand ---
-        if (simPlayers[currentPlayer].length === 0) {
-            score = 1000000; 
-            bestMove = { tile, end, score };
-            break; // This is the best possible move, stop evaluating
-        }
-
         const isBlock = !isPlayableForAnyone(simPlayers, simBoard);
+        return { ...move, isBlock, simPlayers, simBoard };
+    });
+
+    const hadNonBlockingAlternative = movesWithResults.some(m => !m.isBlock);
+
+    for (const move of movesWithResults) {
+        let score = 0;
+        const { tile, end, isBlock, simPlayers, simBoard } = move;
+
+        if (simPlayers[currentPlayer].length === 0) {
+            score = 1000000;
+            bestMove = { tile, end, score };
+            break;
+        }
         
         if (isBlock) {
             const simValues = computePlayerValues(simPlayers);
             const myValue = simValues[currentPlayer];
             const minValue = Math.min(...simValues);
-
-            // --- Rule 1 & 3: Win on block ---
             if (myValue <= minValue) {
-                 // Check if this was an intentional block (had other non-blocking options)
-                let hadNonBlockingAlternative = false;
-                for (const otherMove of validMoves) {
-                    if (otherMove.tile === move.tile && otherMove.end === move.end) continue;
-                    const otherSimBoard = simulatePlay(board, otherMove.tile, otherMove.end);
-                    const otherSimPlayers = JSON.parse(JSON.stringify(players));
-                    const otherTileIndex = otherSimPlayers[currentPlayer].findIndex(t => t.top === otherMove.tile.top && t.bottom === otherMove.tile.bottom);
-                    otherSimPlayers[currentPlayer].splice(otherTileIndex, 1);
-                    if (isPlayableForAnyone(otherSimPlayers, otherSimBoard)) {
-                        hadNonBlockingAlternative = true;
-                        break;
-                    }
-                }
-                
-                if (hadNonBlockingAlternative) {
-                    score += 5000; // Rule 1: High score for intentional, winning block
-                } else {
-                    score += 2500; // Rule 3: Good score for forced winning block
-                }
+                score += hadNonBlockingAlternative ? 5000 : 2500;
             } else {
-                 // --- Penalty for causing a losing block ---
                 score -= 10000;
             }
-        } else { // --- Normal Play Logic ---
-            // --- Rule 6: Lose less by playing high value tiles ---
+        } else {
             let tileValue = tile.top + tile.bottom;
             if (isDouble(tile)) {
-                tileValue += 10; // Prioritize playing doubles
+                tileValue += 10;
             }
             score += tileValue * 10;
 
-            // --- Rule 5: Prevent other players ---
             const nextPlayerIndex = (playerOrder.indexOf(currentPlayer) + 1) % numPlayers;
             const nextPlayerHand = players[playerOrder[nextPlayerIndex]];
             if (!nextPlayerHand.some(t => canPlayTile(t, simBoard))) {
-                score += 200; // Bonus for forcing next player to pass
+                score += 200;
             }
 
-            // --- Rule 2 & 5: Lure/Prevent by playing to rare ends ---
             const pipsCount = countAllPips(players, roundHistory);
-            const leftEndVal = simBoard.leftEnd.value;
-            const rightEndVal = simBoard.rightEnd.value;
-            // The fewer known pips of a number, the rarer it is.
-            // Reward playing a tile that leaves rare numbers open.
-            score += (8 - pipsCount[leftEndVal]) * 5;
-            score += (8 - pipsCount[rightEndVal]) * 5;
+            score += (8 - pipsCount[simBoard.leftEnd.value]) * 5;
+            score += (8 - pipsCount[simBoard.rightEnd.value]) * 5;
         }
 
         if (score > bestMove.score) {
@@ -868,11 +839,8 @@ function playAI(gameState) {
 
     if (bestMove.tile) {
         playTile(gameState, bestMove.tile, bestMove.end);
-    } else {
-         console.error("AI couldn't decide on a move. Playing first valid move.");
-         if (validMoves.length > 0) {
-            playTile(gameState, validMoves[0].tile, validMoves[0].end);
-         }
+    } else if (validMoves.length > 0) {
+        playTile(gameState, validMoves[0].tile, validMoves[0].end);
     }
 }
 
@@ -1890,8 +1858,8 @@ function renderGame(gameState) {
                                 draggedTile = null;
                             };
                             document.addEventListener('touchmove', onTouchMove, {passive: false});
-                            document.addEventListener('touchend', onTouchEnd, {passive: false});
-                        });
+                            document.addEventListener('touchend', onTouchEnd, {passive: true});
+                        }, { passive: true });
                     }
                     
                     // Click for rotate/swap and buttons
