@@ -439,7 +439,7 @@
         <option value="500000">500000</option>
         <option value="1000000">1000000</option>
     </select>
-    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.0.6</div>
+    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.0.7</div>
 
 <script>
 let audioContext = null;
@@ -1376,6 +1376,38 @@ function handleNormalGameWin(gameState) {
 
 function hasNonBlockingAlternative(hand, board, allPlayers, playerIndex) {
     if (!board.leftEnd) return true; // Before first move, game can't be blocked.
+    
+    // NEW: If player has only 1 tile, check if it has only 1 valid play option
+    if (hand.length === 1) {
+        const tile = hand[0];
+        const canPlayLeft = canPlayOnEnd(tile, board.leftEnd.value);
+        const canPlayRight = canPlayOnEnd(tile, board.rightEnd.value);
+        
+        // If can only play on one end (or both ends but it's a double), no alternative
+        if ((canPlayLeft && !canPlayRight) || (!canPlayLeft && canPlayRight)) {
+            return false; // Only one way to play, no alternative
+        }
+        if (canPlayLeft && canPlayRight && isDouble(tile)) {
+            return false; // Double can play on both but same result, no alternative
+        }
+        // If can play on both ends and not a double, check if both lead to same result
+        if (canPlayLeft && canPlayRight && !isDouble(tile)) {
+            const simBoardLeft = simulatePlay(board, tile, 'left');
+            const simBoardRight = simulatePlay(board, tile, 'right');
+            const simPlayers = JSON.parse(JSON.stringify(allPlayers));
+            simPlayers[playerIndex] = []; // Player will have no tiles after play
+            
+            const leftBlocks = !isPlayableForAnyone(simPlayers, simBoardLeft);
+            const rightBlocks = !isPlayableForAnyone(simPlayers, simBoardRight);
+            
+            // If both options block or both don't block, no meaningful alternative
+            if (leftBlocks === rightBlocks) {
+                return false;
+            }
+            // If one blocks and one doesn't, they had an alternative
+            return true;
+        }
+    }
 
     for (const tile of hand) {
         const canPlayLeft = canPlayOnEnd(tile, board.leftEnd.value);
