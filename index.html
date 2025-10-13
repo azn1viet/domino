@@ -439,7 +439,7 @@
         <option value="500000">500000</option>
         <option value="1000000">1000000</option>
     </select>
-    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.0.7</div>
+    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.0.8</div>
 
 <script>
 let audioContext = null;
@@ -1464,8 +1464,8 @@ function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPla
     let assistant = -1;
     
     if (lastHadAlternativeMove) {
-        // Intentional by last
-        // Check if immediate previous had alternative move
+        // Last player had alternative - they are the intentional blocker
+        // Check if immediate previous also had alternative for assisted block
         if (roundHistory.length >= 2 && roundHistory[roundHistory.length - 2].hadAlternativeMove) {
             const prevPlayer = roundHistory[roundHistory.length - 2].player;
             if (prevPlayer === getPreviousPlayer(lastPlayerWhoPlayed)) {
@@ -1478,29 +1478,29 @@ function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPla
             updateScoresForIntentionalBlockNoAssist(blocker, gameState);
         }
     } else {
-        // Last had no alternative, search for remote
-        let remote = -1;
-        let remoteIndex = -1;
-        for (let i = roundHistory.length - 2; i >= 0; i--) {
-            if (roundHistory[i].hadAlternativeMove) {
-                remote = roundHistory[i].player;
-                remoteIndex = i;
-                break;
-            }
-        }
-        if (remote !== -1) {
-            if (remoteIndex === roundHistory.length - 2 && remote === getPreviousPlayer(lastPlayerWhoPlayed)) {
-                // Immediate previous, assisted case
-                blocker = remote;
-                assistant = lastPlayerWhoPlayed;
-                updateScoresForIntentionalBlockWithAssist(blocker, assistant, gameState);
+        // NEW FIX: Last player had NO alternative (forced play)
+        // Check ONLY the immediate previous player
+        if (roundHistory.length >= 2) {
+            const immediatePrevMove = roundHistory[roundHistory.length - 2];
+            const immediatePrevPlayer = immediatePrevMove.player;
+            
+            // Verify this is actually the immediate previous player
+            if (immediatePrevPlayer === getPreviousPlayer(lastPlayerWhoPlayed)) {
+                if (immediatePrevMove.hadAlternativeMove) {
+                    // Immediate previous had alternative and forced last player into blocking
+                    blocker = immediatePrevPlayer;
+                    // No assistant - last player had no choice
+                    updateScoresForIntentionalBlockNoAssist(blocker, gameState);
+                } else {
+                    // Both last and immediate previous had no alternatives - force block
+                    updateScoresForForceBlock(gameState);
+                }
             } else {
-                // Further, no assist
-                blocker = remote;
-                updateScoresForIntentionalBlockNoAssist(blocker, gameState);
+                // Should not happen in normal 4-player game, but fallback to force block
+                updateScoresForForceBlock(gameState);
             }
         } else {
-            // Force block
+            // Not enough history - force block
             updateScoresForForceBlock(gameState);
         }
     }
