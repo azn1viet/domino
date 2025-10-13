@@ -685,10 +685,19 @@ function computePlayerValues(players) {
     return values;
 }
 
+// Updated simulatePlay function to handle the first move correctly
 function simulatePlay(board, tile, end) {
+    // If board is empty, this is the first play
+    if (!board.leftEnd) {
+        return {
+            leftEnd: { value: tile.top },
+            rightEnd: { value: tile.bottom }
+        };
+    }
+
     // Simulate the ends after playing tile on end
-    let simLeftEnd = {...board.leftEnd};
-    let simRightEnd = {...board.rightEnd};
+    let simLeftEnd = { ...board.leftEnd };
+    let simRightEnd = { ...board.rightEnd };
     if (end === 'left') {
         const oldValue = simLeftEnd.value;
         if (tile.top === oldValue) {
@@ -696,7 +705,7 @@ function simulatePlay(board, tile, end) {
         } else {
             simLeftEnd.value = tile.top;
         }
-    } else {
+    } else { // 'right'
         const oldValue = simRightEnd.value;
         if (tile.top === oldValue) {
             simRightEnd.value = tile.bottom;
@@ -704,143 +713,160 @@ function simulatePlay(board, tile, end) {
             simRightEnd.value = tile.top;
         }
     }
-    return {leftEnd: simLeftEnd, rightEnd: simRightEnd};
+    return { leftEnd: simLeftEnd, rightEnd: simRightEnd };
+}
+
+// +++ START OF NEW AI LOGIC +++
+
+// Helper function to check if any player can make a move on the simulated board.
+function isPlayableForAnyone(players, board) {
+    if (!board.leftEnd) return true; // Before first move, anyone can play.
+    for (const hand of players) {
+        if (hand.some(tile => canPlayTile(tile, board))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Helper function to count known pips to gauge rarity.
+function countAllPips(players, roundHistory) {
+    const counts = [0, 0, 0, 0, 0, 0, 0];
+    const allKnownTiles = [];
+    allKnownTiles.push(...players[currentPlayer]);
+    if (roundHistory) {
+        for (const move of roundHistory) {
+            allKnownTiles.push(move.playedTile);
+        }
+    }
+    for (const tile of allKnownTiles) {
+        counts[tile.top]++;
+        counts[tile.bottom]++;
+    }
+    return counts;
 }
 
 function playAI(gameState) {
-    const { players, board } = gameState;
+    const { players, board, roundHistory } = gameState;
     const playerHand = players[currentPlayer];
-    let bestScore = -Infinity;
-    let bestTile = null;
-    let bestEnd = null;
+    let bestMove = { tile: null, end: null, score: -Infinity };
 
-    for (let tile of playerHand) {
-        let possibleEnds = [];
-        if (!board.leftEnd) {
-            possibleEnds.push('right');
-        } else {
-            if (tile.top === board.leftEnd.value || tile.bottom === board.leftEnd.value) possibleEnds.push('left');
-            if (tile.top === board.rightEnd.value || tile.bottom === board.rightEnd.value) possibleEnds.push('right');
-        }
-
-        for (let end of possibleEnds) {
-            let simEnds = simulatePlay(board, tile, end);
-            let simBoard = {leftEnd: simEnds.leftEnd, rightEnd: simEnds.rightEnd};
-
-            let isBlock = true;
-            for (let p = 0; p < numPlayers; p++) {
-                if (players[p].some(t => canPlayTile(t, simBoard))) {
-                    isBlock = false;
-                    break;
+    const validMoves = [];
+    if (!board.leftEnd) {
+        playerHand.forEach(tile => validMoves.push({ tile, end: 'right' }));
+    } else {
+        playerHand.forEach(tile => {
+            const canPlayLeft = canPlayOnEnd(tile, board.leftEnd.value);
+            const canPlayRight = canPlayOnEnd(tile, board.rightEnd.value);
+            if (canPlayLeft) {
+                validMoves.push({ tile, end: 'left' });
+            }
+            if (canPlayRight) {
+                 // Prevent adding the same move twice for a double tile that can be played on either end
+                if (!isDouble(tile) || !canPlayLeft) {
+                    validMoves.push({ tile, end: 'right' });
                 }
             }
+        });
+    }
 
-            let tileValue = tile.top + tile.bottom;
-            let isThisDouble = isDouble(tile);
-            let tileBonus = tileValue * 2 + (isThisDouble ? 5 : 0);
+    if (validMoves.length === 0) {
+        // This case is handled by the main game loop, which skips the player's turn.
+        // AI function should not be called if there are no valid moves.
+        return;
+    }
+    
+    for (const move of validMoves) {
+        let score = 0;
+        const { tile, end } = move;
 
-            let score;
-            let simPlayers = JSON.parse(JSON.stringify(players));
-            simPlayers[currentPlayer] = simPlayers[currentPlayer].filter(t => !(t.top === tile.top && t.bottom === tile.bottom));
-            let simValues = computePlayerValues(simPlayers);
-            let blockerValue = simValues[currentPlayer];
-            let othersValues = simValues.filter((_, i) => i !== currentPlayer);
+        // --- Create a simulated game state after the move ---
+        const simBoard = simulatePlay(board, tile, end);
+        const simPlayers = JSON.parse(JSON.stringify(players));
+        const tileIndex = simPlayers[currentPlayer].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
+        simPlayers[currentPlayer].splice(tileIndex, 1);
 
-            if (isBlock) {
-                // Check if player had alternatives that wouldn't block
-                // Case 1: Different tile that can be played
-                // Case 2: Same tile but can be played on different end (left vs right)
-                let hadAlternatives = false;
-                
-                // First check: Can this exact tile be played on a different end?
-                if (possibleEnds.length > 1) {
-                    // This tile can be played on both left and right
-                    // Check if playing on the OTHER end would not block
-                    let otherEnd = (end === 'left') ? 'right' : 'left';
-                    let otherSimEnds = simulatePlay(board, tile, otherEnd);
-                    let otherSimBoard = {leftEnd: otherSimEnds.leftEnd, rightEnd: otherSimEnds.rightEnd};
-                    let othersCanPlayOtherEnd = false;
-                    for (let p = 0; p < numPlayers; p++) {
-                        if (p === currentPlayer) continue;
-                        if (players[p].some(t => canPlayTile(t, otherSimBoard))) {
-                            othersCanPlayOtherEnd = true;
-                            break;
-                        }
-                    }
-                    if (othersCanPlayOtherEnd) {
-                        hadAlternatives = true;
-                    }
-                }
-                
-                // Second check: Different tiles that could be played
-                if (!hadAlternatives) {
-                    for (let testTile of playerHand) {
-                        // Skip the same tile we're evaluating
-                        if (testTile.top === tile.top && testTile.bottom === tile.bottom) continue;
-                        
-                        // Check if this different tile can be played
-                        let testPossibleEnds = [];
-                        if (testTile.top === board.leftEnd.value || testTile.bottom === board.leftEnd.value) testPossibleEnds.push('left');
-                        if (testTile.top === board.rightEnd.value || testTile.bottom === board.rightEnd.value) testPossibleEnds.push('right');
-                        
-                        // Only consider it an alternative if this different tile can be played
-                        if (testPossibleEnds.length > 0) {
-                            for (let testEnd of testPossibleEnds) {
-                                let testSimEnds = simulatePlay(board, testTile, testEnd);
-                                let testSimBoard = {leftEnd: testSimEnds.leftEnd, rightEnd: testSimEnds.rightEnd};
-                                let othersCanPlay = false;
-                                for (let p = 0; p < numPlayers; p++) {
-                                    if (p === currentPlayer) continue;
-                                    if (players[p].some(t => canPlayTile(t, testSimBoard))) {
-                                        othersCanPlay = true;
-                                        break;
-                                    }
-                                }
-                                if (othersCanPlay) {
-                                    hadAlternatives = true;
-                                    break;
-                                }
-                            }
-                            if (hadAlternatives) break;
-                        }
+        // --- Rule 4: Highest priority is to win by emptying hand ---
+        if (simPlayers[currentPlayer].length === 0) {
+            score = 1000000; 
+            bestMove = { tile, end, score };
+            break; // This is the best possible move, stop evaluating
+        }
+
+        const isBlock = !isPlayableForAnyone(simPlayers, simBoard);
+        
+        if (isBlock) {
+            const simValues = computePlayerValues(simPlayers);
+            const myValue = simValues[currentPlayer];
+            const minValue = Math.min(...simValues);
+
+            // --- Rule 1 & 3: Win on block ---
+            if (myValue <= minValue) {
+                 // Check if this was an intentional block (had other non-blocking options)
+                let hadNonBlockingAlternative = false;
+                for (const otherMove of validMoves) {
+                    if (otherMove.tile === move.tile && otherMove.end === move.end) continue;
+                    const otherSimBoard = simulatePlay(board, otherMove.tile, otherMove.end);
+                    const otherSimPlayers = JSON.parse(JSON.stringify(players));
+                    const otherTileIndex = otherSimPlayers[currentPlayer].findIndex(t => t.top === otherMove.tile.top && t.bottom === otherMove.tile.bottom);
+                    otherSimPlayers[currentPlayer].splice(otherTileIndex, 1);
+                    if (isPlayableForAnyone(otherSimPlayers, otherSimBoard)) {
+                        hadNonBlockingAlternative = true;
+                        break;
                     }
                 }
-
-                if (hadAlternatives) {
-                    // Intentional block scoring
-                    let minOthers = Math.min(...othersValues);
-                    if (blockerValue <= minOthers) {
-                        score = othersValues.reduce((a, b) => a + b, 0) * 2 * bet + tileBonus * 10;
-                    } else {
-                        score = -othersValues.reduce((a, b) => a + b, 0) * 2 * bet - tileBonus;
-                    }
+                
+                if (hadNonBlockingAlternative) {
+                    score += 5000; // Rule 1: High score for intentional, winning block
                 } else {
-                    // Natural force block scoring - no alternatives existed
-                    let minVal = Math.min(...simValues);
-                    let minP = simValues.indexOf(minVal);
-                    if (minP === currentPlayer || simValues.filter(v => v === minVal).length > 1) {
-                        score = simValues.reduce((a, b, i) => i === currentPlayer ? a : a + b, 0) * bet + tileBonus * 5;
-                    } else {
-                        score = -simValues[currentPlayer] * bet - tileBonus;
-                    }
+                    score += 2500; // Rule 3: Good score for forced winning block
                 }
             } else {
-                let ownValue = computePlayerValues(simPlayers)[currentPlayer];
-                score = -ownValue * bet + tileBonus * 3;
+                 // --- Penalty for causing a losing block ---
+                score -= 10000;
+            }
+        } else { // --- Normal Play Logic ---
+            // --- Rule 6: Lose less by playing high value tiles ---
+            let tileValue = tile.top + tile.bottom;
+            if (isDouble(tile)) {
+                tileValue += 10; // Prioritize playing doubles
+            }
+            score += tileValue * 10;
+
+            // --- Rule 5: Prevent other players ---
+            const nextPlayerIndex = (playerOrder.indexOf(currentPlayer) + 1) % numPlayers;
+            const nextPlayerHand = players[playerOrder[nextPlayerIndex]];
+            if (!nextPlayerHand.some(t => canPlayTile(t, simBoard))) {
+                score += 200; // Bonus for forcing next player to pass
             }
 
-            if (score > bestScore) {
-                bestScore = score;
-                bestTile = tile;
-                bestEnd = end;
-            }
+            // --- Rule 2 & 5: Lure/Prevent by playing to rare ends ---
+            const pipsCount = countAllPips(players, roundHistory);
+            const leftEndVal = simBoard.leftEnd.value;
+            const rightEndVal = simBoard.rightEnd.value;
+            // The fewer known pips of a number, the rarer it is.
+            // Reward playing a tile that leaves rare numbers open.
+            score += (8 - pipsCount[leftEndVal]) * 5;
+            score += (8 - pipsCount[rightEndVal]) * 5;
+        }
+
+        if (score > bestMove.score) {
+            bestMove = { tile, end, score };
         }
     }
 
-    if (bestTile) {
-        playTile(gameState, bestTile, bestEnd);
+    if (bestMove.tile) {
+        playTile(gameState, bestMove.tile, bestMove.end);
+    } else {
+         console.error("AI couldn't decide on a move. Playing first valid move.");
+         if (validMoves.length > 0) {
+            playTile(gameState, validMoves[0].tile, validMoves[0].end);
+         }
     }
 }
+
+// +++ END OF NEW AI LOGIC +++
+
 function calculatePlacement(board, end, tableRect, tile) {
     const { V_W, V_H, H_W, H_H, FULL, OFFSET } = getTileSizes();
     const MARGIN = 0; //35; was decrease the space left and right for larger turn area, smaller screen benefit
@@ -1358,6 +1384,25 @@ function handleNormalGameWin(gameState) {
     updateScoresForWin(currentPlayer, gameState);
     renderGame(gameState);
     showNewGameButton();
+}
+
+function hasNonBlockingAlternative(hand, board, allPlayers, playerIndex) {
+    for (const tile of hand) {
+        let ends = [];
+        if (canPlayOnEnd(tile, board.leftEnd.value)) ends.push('left');
+        if (canPlayOnEnd(tile, board.rightEnd.value)) ends.push('right');
+
+        for (const end of ends) {
+            const simBoard = simulatePlay(board, tile, end);
+            const simPlayers = JSON.parse(JSON.stringify(allPlayers));
+            const tileIdx = simPlayers[playerIndex].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
+            simPlayers[playerIndex].splice(tileIdx, 1);
+            if (isPlayableForAnyone(simPlayers, simBoard)) {
+                return true; // Found a move that doesn't block
+            }
+        }
+    }
+    return false;
 }
 
 function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPlayedTile, lastPlayedEnd) {
