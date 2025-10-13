@@ -1024,53 +1024,38 @@ function playTile(gameState, tile, end) {
         return false;
     }
 
-    const { V_W, V_H, H_W, H_H, FULL, OFFSET } = getTileSizes();
+   // Inside playTile() function, this section was fixed:
 
-    gameState.prevBoard = board.leftEnd ? {
-        leftEnd: {...board.leftEnd}, 
-        rightEnd: {...board.rightEnd}
-    } : null;
+const { V_W, V_H, H_W, H_H, FULL, OFFSET } = getTileSizes();
 
-    // NEW: Check for the special blocking condition
-   /* let hadAlternativeEnd = false;
-    if (board.leftEnd) { // Condition can only be checked after the first move
-        const playableTiles = playerHand.filter(t => canPlayTile(t, board));
-        if (playableTiles.length === 1) {
-            const theOnlyTile = playableTiles[0];
-            if (theOnlyTile.top === tile.top && theOnlyTile.bottom === tile.bottom) {
-                const canPlayLeft = (theOnlyTile.top === board.leftEnd.value || theOnlyTile.bottom === board.leftEnd.value);
-                const canPlayRight = (theOnlyTile.top === board.rightEnd.value || theOnlyTile.bottom === board.rightEnd.value);
-                if (canPlayLeft && canPlayRight) {
-                    hadAlternativeEnd = true;
-                }
-            }
-        }
-    }*/
-	// Check if player had a non-blocking alternative before this move
-    let hadAlternativeMove = false;
-    if (board.leftEnd) { // Can only check after the first move
-        // Create a copy of players state before this tile is removed
-        const playersBeforeMove = JSON.parse(JSON.stringify(players));
-        hadAlternativeMove = hasNonBlockingAlternative(playerHand, board, playersBeforeMove, currentPlayer);
-    }
+gameState.prevBoard = board.leftEnd ? {
+    leftEnd: {...board.leftEnd}, 
+    rightEnd: {...board.rightEnd}
+} : null;
 
-    const playedTile = playerHand.splice(tileIndex, 1)[0];
-    
-    // Reset selection if player 0 played
-    if (currentPlayer === 0) {
-        gameState.selectedIndex = -1;
-    }
-    
-    // NEW: Log the move to round history
-    if(roundHistory) {
-        roundHistory.push({
-            player: currentPlayer,
-            playedTile: {...playedTile},
-            end: end,
-            boardBefore: gameState.prevBoard,
-            hadAlternativeEnd: hadAlternativeMove
-        });
-    }
+// FIXED: Calculate hadAlternativeMove BEFORE removing tile
+let hadAlternativeMove = false;
+if (board.leftEnd) {
+    const playersBeforeMove = players.map(hand => [...hand]);
+    hadAlternativeMove = hasNonBlockingAlternative(playerHand, board, playersBeforeMove, currentPlayer);
+}
+
+const playedTile = playerHand.splice(tileIndex, 1)[0];
+
+if (currentPlayer === 0) {
+    gameState.selectedIndex = -1;
+}
+
+// Log to history with hadAlternativeMove flag
+if(roundHistory) {
+    roundHistory.push({
+        player: currentPlayer,
+        playedTile: {...playedTile},
+        end: end,
+        boardBefore: gameState.prevBoard,
+        hadAlternativeMove: hadAlternativeMove
+    });
+}
     
     const tableDiv = document.getElementById('table');
     const tableRect = tableDiv.getBoundingClientRect();
@@ -1397,7 +1382,7 @@ function hasNonBlockingAlternative(hand, board, allPlayers, playerIndex) {
             const tileIdx = simPlayers[playerIndex].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
             simPlayers[playerIndex].splice(tileIdx, 1);
             if (isPlayableForAnyone(simPlayers, simBoard)) {
-                return true; // Found a move that doesn't block
+                return true;
             }
         }
     }
@@ -1423,12 +1408,15 @@ function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPla
     let assistant = -1;
     
     if (lastHadAlternativeMove) {
+        // Last player had alternatives - they are the blocker
         if (roundHistory.length >= 2 && roundHistory[roundHistory.length - 2].hadAlternativeMove) {
             const prevPlayer = roundHistory[roundHistory.length - 2].player;
             if (prevPlayer === lastPlayerWhoPlayed) {
+                // BUG FIX #1: Consecutive plays by same player
                 blocker = lastPlayerWhoPlayed;
                 assistant = -1;
             } else if (prevPlayer === getPreviousPlayer(lastPlayerWhoPlayed)) {
+                // BUG FIX #2: Last player is blocker, previous is assistant
                 blocker = lastPlayerWhoPlayed;
                 assistant = prevPlayer;
             }
@@ -1439,6 +1427,7 @@ function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPla
             updateScoresForIntentionalBlockNoAssist(blocker, gameState);
         }
     } else {
+        // Last player had no alternatives - search for remote blocker
         let remote = -1;
         let remoteIndex = -1;
         for (let i = roundHistory.length - 2; i >= 0; i--) {
@@ -1449,10 +1438,12 @@ function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPla
             }
         }
         if (remote !== -1) {
+            // BUG FIX #1: Check if remote blocker is same as last player (consecutive plays)
             if (remote === lastPlayerWhoPlayed) {
                 blocker = remote;
                 updateScoresForIntentionalBlockNoAssist(blocker, gameState);
             } else if (remoteIndex === roundHistory.length - 2 && remote === getPreviousPlayer(lastPlayerWhoPlayed)) {
+                // BUG FIX #2: Previous player is blocker, last player is assistant
                 blocker = remote;
                 assistant = lastPlayerWhoPlayed;
                 updateScoresForIntentionalBlockWithAssist(blocker, assistant, gameState);
