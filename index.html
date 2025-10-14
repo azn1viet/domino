@@ -439,7 +439,7 @@
         <option value="500000">500000</option>
         <option value="1000000">1000000</option>
     </select>
-    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.1.9</div>
+    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.2.0</div>
 
 <script>
 let audioContext = null;
@@ -746,6 +746,101 @@ function countAllPips(players, roundHistory) {
     return counts;
 }
 
+function getValidMoves(hand, board) {
+    const validMoves = [];
+    if (!board.leftEnd) {
+        hand.forEach(tile => validMoves.push({ tile, end: 'right' }));
+    } else {
+        hand.forEach(tile => {
+            const canLeft = canPlayOnEnd(tile, board.leftEnd.value);
+            const canRight = canPlayOnEnd(tile, board.rightEnd.value);
+            if (canLeft) {
+                validMoves.push({ tile, end: 'left' });
+            }
+            if (canRight) {
+                if (!isDouble(tile) || !canLeft) {
+                    validMoves.push({ tile, end: 'right' });
+                }
+            }
+        });
+    }
+    return validMoves;
+}
+
+function isInevitableBlock(board, players, currentPlayer, depth, maxDepth = 3) {
+    if (depth > maxDepth) {
+        return false; // Assume not inevitable beyond horizon
+    }
+
+    if (!isPlayableForAnyone(players, board)) {
+        return true; // Current state is blocked
+    }
+
+    let nextIndex = (playerOrder.indexOf(currentPlayer) + 1) % numPlayers;
+    let nextPlayer = playerOrder[nextIndex];
+    let validMoves = getValidMoves(players[nextPlayer], board);
+
+    while (validMoves.length === 0) {
+        // Skip players who can't play
+        nextIndex = (nextIndex + 1) % numPlayers;
+        nextPlayer = playerOrder[nextIndex];
+        validMoves = getValidMoves(players[nextPlayer], board);
+        if (nextIndex === playerOrder.indexOf(currentPlayer)) {
+            // Full cycle, all skipped, block
+            return true;
+        }
+    }
+
+    let allLeadToBlock = true;
+    for (const move of validMoves) {
+        const simBoard = simulatePlay(board, move.tile, move.end);
+        const simPlayers = JSON.parse(JSON.stringify(players));
+        const tileIndex = simPlayers[nextPlayer].findIndex(t => t.top === move.tile.top && t.bottom === move.tile.bottom);
+        simPlayers[nextPlayer].splice(tileIndex, 1);
+
+        if (simPlayers[nextPlayer].length === 0) {
+            return false; // Game ends with a win, not block
+        }
+
+        if (!isInevitableBlock(simBoard, simPlayers, nextPlayer, depth + 1, maxDepth)) {
+            allLeadToBlock = false;
+            break;
+        }
+    }
+    return allLeadToBlock;
+}
+
+function hasPreventingAlternative(hand, board, allPlayers, playerIndex, maxDepth = 0) {
+    const validMoves = getValidMoves(hand, board);
+    if (validMoves.length === 0) return false;
+
+    let hasMultipleOptions = validMoves.length > 1 ||
+        (validMoves.length === 1 &&
+         canPlayOnEnd(validMoves[0].tile, board.leftEnd ? board.leftEnd.value : null) &&
+         canPlayOnEnd(validMoves[0].tile, board.rightEnd ? board.rightEnd.value : null) &&
+         board.leftEnd && board.rightEnd && board.leftEnd.value !== board.rightEnd.value);
+    if (!hasMultipleOptions) return false;
+
+    let hasNonBlockingMove = false;
+    for (const move of validMoves) {
+        const simBoard = simulatePlay(board, move.tile, move.end);
+        const simPlayers = JSON.parse(JSON.stringify(allPlayers));
+        const tileIndex = simPlayers[playerIndex].findIndex(t => t.top === move.tile.top && t.bottom === move.tile.bottom);
+        simPlayers[playerIndex].splice(tileIndex, 1);
+
+        if (simPlayers[playerIndex].length === 0) {
+            hasNonBlockingMove = true;
+            break; // This move wins immediately
+        }
+
+        if (!isInevitableBlock(simBoard, simPlayers, playerIndex, 1, maxDepth)) {
+            hasNonBlockingMove = true;
+            break;
+        }
+    }
+    return hasNonBlockingMove;
+}
+
 function playAI(gameState) {
     const { players, board, roundHistory, isThisFirstGame } = gameState;
     const playerHand = players[currentPlayer];
@@ -765,24 +860,7 @@ function playAI(gameState) {
 
     let bestMove = { tile: null, end: null, score: -Infinity };
 
-    const validMoves = [];
-    if (!board.leftEnd) {
-        playerHand.forEach(tile => validMoves.push({ tile, end: 'right' }));
-    } else {
-        playerHand.forEach(tile => {
-            const canPlayLeft = canPlayOnEnd(tile, board.leftEnd.value);
-            const canPlayRight = canPlayOnEnd(tile, board.rightEnd.value);
-            if (canPlayLeft) {
-                validMoves.push({ tile, end: 'left' });
-            }
-            if (canPlayRight) {
-                 // Prevent adding the same move twice for a double tile that can be played on either end
-                if (!isDouble(tile) || !canPlayLeft) {
-                    validMoves.push({ tile, end: 'right' });
-                }
-            }
-        });
-    }
+    const validMoves = getValidMoves(playerHand, board);
 
     if (validMoves.length === 0) {
         return;
@@ -1374,101 +1452,6 @@ function updateScoresForForceBlock(gameState) {
     setTimeout(() => alert(message), 100);
 }
 
-function hasNonBlockingAlternative(hand, board, allPlayers, playerIndex) {
-    if (!board.leftEnd) return false;
-
-    const playableTiles = hand.filter(tile => canPlayTile(tile, board));
-    
-    // Must have at least 2 different playable tiles OR 1 tile with 2 different outcomes
-    if (playableTiles.length < 1) return false;
-    
-    let hasNonBlockingMove = false;
-    
-    for (const tile of playableTiles) {
-        const canPlayLeft = canPlayOnEnd(tile, board.leftEnd.value);
-        const canPlayRight = canPlayOnEnd(tile, board.rightEnd.value);
-        
-        // Try playing on left
-        if (canPlayLeft) {
-            const simBoard = simulatePlay(board, tile, 'left');
-            const simPlayers = JSON.parse(JSON.stringify(allPlayers));
-            const tileIdx = simPlayers[playerIndex].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
-            simPlayers[playerIndex].splice(tileIdx, 1);
-            if (isPlayableForAnyone(simPlayers, simBoard)) {
-                hasNonBlockingMove = true;
-                break;
-            }
-        }
-        
-        // Try playing on right (skip if double and already tried left)
-        if (canPlayRight && (!isDouble(tile) || !canPlayLeft)) {
-            const simBoard = simulatePlay(board, tile, 'right');
-            const simPlayers = JSON.parse(JSON.stringify(allPlayers));
-            const tileIdx = simPlayers[playerIndex].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
-            simPlayers[playerIndex].splice(tileIdx, 1);
-            if (isPlayableForAnyone(simPlayers, simBoard)) {
-                hasNonBlockingMove = true;
-                break;
-            }
-        }
-    }
-    
-    // Only has alternative if: multiple playable tiles OR can play 1 tile on both ends
-    const hasMultipleOptions = playableTiles.length > 1 || 
-        (playableTiles.length === 1 && 
-         canPlayOnEnd(playableTiles[0], board.leftEnd.value) && 
-         canPlayOnEnd(playableTiles[0], board.rightEnd.value));
-    
-    return hasMultipleOptions && hasNonBlockingMove;
-}
-
-function hasBlockingAlternative(hand, board, allPlayers, playerIndex) {
-    if (!board.leftEnd) return false;
-
-    const playableTiles = hand.filter(tile => canPlayTile(tile, board));
-    
-    if (playableTiles.length < 1) return false;
-    
-    let hasBlockingMove = false;
-    
-    for (const tile of playableTiles) {
-        const canPlayLeft = canPlayOnEnd(tile, board.leftEnd.value);
-        const canPlayRight = canPlayOnEnd(tile, board.rightEnd.value);
-        
-        // Try playing on left
-        if (canPlayLeft) {
-            const simBoard = simulatePlay(board, tile, 'left');
-            const simPlayers = JSON.parse(JSON.stringify(allPlayers));
-            const tileIdx = simPlayers[playerIndex].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
-            simPlayers[playerIndex].splice(tileIdx, 1);
-            if (!isPlayableForAnyone(simPlayers, simBoard)) {
-                hasBlockingMove = true;
-                break;
-            }
-        }
-        
-        // Try playing on right (skip if double and already tried left)
-        if (canPlayRight && (!isDouble(tile) || !canPlayLeft)) {
-            const simBoard = simulatePlay(board, tile, 'right');
-            const simPlayers = JSON.parse(JSON.stringify(allPlayers));
-            const tileIdx = simPlayers[playerIndex].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
-            simPlayers[playerIndex].splice(tileIdx, 1);
-            if (!isPlayableForAnyone(simPlayers, simBoard)) {
-                hasBlockingMove = true;
-                break;
-            }
-        }
-    }
-    
-    // Only has alternative if: multiple playable tiles OR can play 1 tile on both ends
-    const hasMultipleOptions = playableTiles.length > 1 || 
-        (playableTiles.length === 1 && 
-         canPlayOnEnd(playableTiles[0], board.leftEnd.value) && 
-         canPlayOnEnd(playableTiles[0], board.rightEnd.value));
-    
-    return hasMultipleOptions && hasBlockingMove;
-}
-
 function handleNormalGameWin(gameState) {
     gameState.gameOver = true;
     updateScoresForWin(currentPlayer, gameState);
@@ -1493,11 +1476,12 @@ function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPla
     const playersAtLast = JSON.parse(JSON.stringify(players));
     playersAtLast[lastPlayerWhoPlayed].push({...lastPlayedTile});
     
-    const lastHadNonBlockingAlt = hasNonBlockingAlternative(
+    const lastHadNonBlockingAlt = hasPreventingAlternative(
         lastPlayerHandBefore, 
         prevBoard, 
         playersAtLast, 
-        lastPlayerWhoPlayed
+        lastPlayerWhoPlayed,
+        0
     );
     
     let blocker = lastPlayerWhoPlayed;
@@ -1523,11 +1507,12 @@ function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPla
                     
                     // FIXED: Check if prev player had NON-BLOCKING alternative
                     // If they could have avoided setting up the block, they're the assistant
-                    const prevHadNonBlockingAlt = hasNonBlockingAlternative(
+                    const prevHadNonBlockingAlt = hasPreventingAlternative(
                         prevHandBefore,
                         prevBoardBefore,
                         playersAtPrev,
-                        prevPlayer
+                        prevPlayer,
+                        1
                     );
                     
                     if (prevHadNonBlockingAlt) {
@@ -1561,11 +1546,12 @@ function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPla
                     
                     // Check if prev player had NON-BLOCKING alternative
                     // If yes, they forced last player into blocking
-                    const prevHadNonBlockingAlt = hasNonBlockingAlternative(
+                    const prevHadNonBlockingAlt = hasPreventingAlternative(
                         prevHandBefore,
                         prevBoardBefore,
                         playersAtPrev,
-                        prevPlayer
+                        prevPlayer,
+                        1
                     );
                     
                     if (prevHadNonBlockingAlt) {
@@ -1576,7 +1562,33 @@ function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPla
                 }
             }
         }
-        // If no intentional by prev, it's force block
+        // Check for remote blocker (2 moves back)
+        if (roundHistory.length >= 3) {
+            const grandMove = roundHistory[roundHistory.length - 3];
+            const grandPlayer = grandMove.player;
+            const grandBoardBefore = grandMove.boardBefore;
+            if (grandBoardBefore && grandBoardBefore.leftEnd) {
+                const grandHandBefore = [...players[grandPlayer], grandMove.playedTile];
+                const playersAtGrand = JSON.parse(JSON.stringify(players));
+                for (let i = roundHistory.length - 3; i < roundHistory.length; i++) {
+                    const move = roundHistory[i];
+                    playersAtGrand[move.player].push({...move.playedTile});
+                }
+                const grandHadPreventingAlt = hasPreventingAlternative(
+                    grandHandBefore,
+                    grandBoardBefore,
+                    playersAtGrand,
+                    grandPlayer,
+                    2
+                );
+                if (grandHadPreventingAlt) {
+                    blocker = grandPlayer;
+                    updateScoresForIntentionalBlockNoAssist(blocker, gameState);
+                    return;
+                }
+            }
+        }
+        // If no intentional by prev or grand, it's force block
         updateScoresForForceBlock(gameState);
     }
     
