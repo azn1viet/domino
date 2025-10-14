@@ -292,10 +292,10 @@
         .score {
             font-size: 14px;
             font-weight: bold;
-            color: #add8e6;
+            color: #fff;
             margin: 3px 0;
             z-index: 101;
-            text-shadow: 0 0 5px #0f0;
+            text-shadow: 0 0 5px #fff;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -306,42 +306,38 @@
             width: 25px;
             display: inline-block;
             text-align: center;
-            color: lime;
+           color: #0f0;
         }
         .score-text {
             white-space: nowrap;
+			margin-left: 10px;
+			color: #0f0;
         }
         .score-number {
             position: relative;
             display: inline-block;
-            margin-left: 30px;
+            margin-left: 50px;
         }
-        .coins-container {
-            position: absolute;
-            z-index: 1;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 60px;
-            height: 20px;
-            pointer-events: none;
-        }
-        .coins-container .coin {
-            position: absolute;
-            font-size: 18px;
-        }
-        .coins-container .coin:nth-child(1) {
-            top: 0;
-            left: 0;
-        }
-        .coins-container .coin:nth-child(2) {
-            top: 0;
-            left: 10px;
-        }
-        .coins-container .coin:nth-child(3) {
-            top: 0;
-            left: 20px;
-        }
+
+.coins-container {
+    position: absolute;
+    z-index: 1;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    height: 20px;
+    pointer-events: none;
+    display: flex;            /* ← ADDED flex layout */
+    align-items: center;      /* ← ADDED */
+}
+.coins-container .coin {
+    font-size: 18px;
+    margin-left: -8px;        /* ← ADDED overlap effect */
+	opacity: 0.5;
+}
+.coins-container .coin:first-child {
+    margin-left: 0;           /* ← ADDED no margin for first coin */
+}
         .play-buttons {
             margin-top: 5px;
             display: flex;
@@ -368,7 +364,7 @@
         }
         #new-game {
             position: fixed;
-            bottom: 90px;
+            bottom: 95px;
             left: 50%;
             transform: translate(-50%, -50%);
             padding: 15px 30px;
@@ -1793,7 +1789,14 @@ function renderGame(gameState) {
         hand.innerHTML = '';
         const scoreDiv = document.createElement('div');
         scoreDiv.className = 'score';
-        scoreDiv.innerHTML = `<span class="score-arrow">${!gameOver && index === currentPlayer ? '➤' : ''}</span><span class="score-text">[P${getPlayerNumber(index)}]</span><div class="score-number"><div class="coins-container">${' <span class="coin">🪙</span>'.repeat(3)}</div><span class="score-text" style="position: absolute; top: 50%; left: 50%; transform: translate(calc(-50% - 10px), calc(-50% + 3px)); z-index: 2; color: black;">${scores[index] < 0 ? '-' + abbreviate(-scores[index]) : abbreviate(scores[index])}</span></div>`;
+// AFTER
+const scoreValue = scores[index];
+const scoreText = scoreValue < 0 ? '-$' + Math.abs(scoreValue) : '$' + scoreValue;
+const scoreLength = scoreText.length;
+const numCoins = Math.max(3, Math.ceil(scoreLength / 2)) -1;
+const coinsHtml = '<span class="coin">🪙</span>'.repeat(numCoins);
+scoreDiv.innerHTML = `<span class="score-arrow">${!gameOver && index === currentPlayer ? '➤' : ''}</span><span class="score-text">[P${getPlayerNumber(index)}]</span><div class="score-number"><div class="coins-container">${coinsHtml}</div><span class="score-text" style="position: absolute; top: 50%; left: 50%; transform: translate(calc(-50% - 10px), calc(-50% + 3px)); z-index: 2; color: black;">${scoreText}</span></div>`;
+		
         const tilesContainer = document.createElement('div');
         tilesContainer.className = 'tiles-container';
         let playButtons;
