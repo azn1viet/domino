@@ -368,7 +368,7 @@
         }
         #new-game {
             position: fixed;
-            top: 75%;
+            bottom: 90px;
             left: 50%;
             transform: translate(-50%, -50%);
             padding: 15px 30px;
@@ -438,7 +438,7 @@
         <option value="500000">500000</option>
         <option value="1000000">1000000</option>
     </select>
-    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.2.1</div>
+    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.2.2</div>
 
 <script>
 let audioContext = null;
@@ -1332,8 +1332,8 @@ function updateScoresForIntentionalBlockWithAssist(blocker, assistant, gameState
     let values = computePlayerValues(gameState.players);
     let minAll = Math.min(...values);
     let blockerValue = values[blocker];
-    let totalValue = values.reduce((a, b) => a + b, 0);
-    let payAmount = 2 * totalValue * bet;
+let othersTotal = values.reduce((sum, val, idx) => idx === blocker ? sum : sum + val, 0);  // Only OTHER players
+let payAmount = 2 * othersTotal * bet;
     let message;
     if (blockerValue <= minAll) {
         // blocker wins, assistant pays to blocker
