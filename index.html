@@ -439,7 +439,7 @@
         <option value="500000">500000</option>
         <option value="1000000">1000000</option>
     </select>
-    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.1.8</div>
+    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.1.9</div>
 
 <script>
 let audioContext = null;
@@ -1868,7 +1868,7 @@ players[index].forEach((tile, tileIdx) => {
                 });
             }
             
-            tileDiv.onclick = (e) => { if (isPlayable) { initAudioContext(); canPlaySound = true; e.stopPropagation(); if (tileDiv.dataset.justMoved === 'true') { delete tileDiv.dataset.justMoved; return; } handleTileClick(gameState, tileIdx, playButtons); } };
+            tileDiv.onclick = (e) => { initAudioContext(); canPlaySound = true; e.stopPropagation(); if (tileDiv.dataset.justMoved === 'true') { delete tileDiv.dataset.justMoved; return; } handleTileClick(gameState, tileIdx, playButtons); };
             if (selectedIndex === tileIdx) tileDiv.classList.add('selected');
         }
     }
@@ -1880,7 +1880,7 @@ players[index].forEach((tile, tileIdx) => {
         
         if (playButtons) {
             hand.appendChild(playButtons);
-            if (selectedIndex !== -1) {
+            if (currentPlayer === 0 && selectedIndex !== -1) {
                 const selectedTileData = players[0][selectedIndex];
                 const leftBtn = playButtons.querySelector('.play-left');
                 const rightBtn = playButtons.querySelector('.play-right');
