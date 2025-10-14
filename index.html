@@ -1,4 +1,3 @@
-<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -439,7 +438,7 @@
         <option value="500000">500000</option>
         <option value="1000000">1000000</option>
     </select>
-    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.2.0</div>
+    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.2.1</div>
 
 <script>
 let audioContext = null;
@@ -769,26 +768,25 @@ function getValidMoves(hand, board) {
 
 function isInevitableBlock(board, players, currentPlayer, depth, maxDepth = 3) {
     if (depth > maxDepth) {
-        return false; // Assume not inevitable beyond horizon
+        return false;
     }
 
     if (!isPlayableForAnyone(players, board)) {
-        return true; // Current state is blocked
+        return true;
     }
 
     let nextIndex = (playerOrder.indexOf(currentPlayer) + 1) % numPlayers;
     let nextPlayer = playerOrder[nextIndex];
     let validMoves = getValidMoves(players[nextPlayer], board);
 
-    while (validMoves.length === 0) {
-        // Skip players who can't play
+    while (validMoves.length === 0 && nextIndex !== playerOrder.indexOf(currentPlayer)) {
         nextIndex = (nextIndex + 1) % numPlayers;
         nextPlayer = playerOrder[nextIndex];
         validMoves = getValidMoves(players[nextPlayer], board);
-        if (nextIndex === playerOrder.indexOf(currentPlayer)) {
-            // Full cycle, all skipped, block
-            return true;
-        }
+    }
+
+    if (validMoves.length === 0) {
+        return true;
     }
 
     let allLeadToBlock = true;
@@ -799,7 +797,7 @@ function isInevitableBlock(board, players, currentPlayer, depth, maxDepth = 3) {
         simPlayers[nextPlayer].splice(tileIndex, 1);
 
         if (simPlayers[nextPlayer].length === 0) {
-            return false; // Game ends with a win, not block
+            return false; // Leads to win, not block
         }
 
         if (!isInevitableBlock(simBoard, simPlayers, nextPlayer, depth + 1, maxDepth)) {
@@ -810,7 +808,7 @@ function isInevitableBlock(board, players, currentPlayer, depth, maxDepth = 3) {
     return allLeadToBlock;
 }
 
-function hasPreventingAlternative(hand, board, allPlayers, playerIndex, maxDepth = 0) {
+function hasPreventingAlternative(hand, board, allPlayers, playerIndex, maxDepth = 3) {
     const validMoves = getValidMoves(hand, board);
     if (validMoves.length === 0) return false;
 
@@ -830,7 +828,7 @@ function hasPreventingAlternative(hand, board, allPlayers, playerIndex, maxDepth
 
         if (simPlayers[playerIndex].length === 0) {
             hasNonBlockingMove = true;
-            break; // This move wins immediately
+            break;
         }
 
         if (!isInevitableBlock(simBoard, simPlayers, playerIndex, 1, maxDepth)) {
@@ -1452,6 +1450,88 @@ function updateScoresForForceBlock(gameState) {
     setTimeout(() => alert(message), 100);
 }
 
+function hasPreventingAlternative(hand, board, allPlayers, playerIndex, maxDepth = 0) {
+    if (!board.leftEnd) return false;
+
+    const playableTiles = hand.filter(tile => canPlayTile(tile, board));
+    
+    if (playableTiles.length < 1) return false;
+    
+    let hasNonBlockingMove = false;
+    
+    for (const tile of playableTiles) {
+        const canPlayLeft = canPlayOnEnd(tile, board.leftEnd.value);
+        const canPlayRight = canPlayOnEnd(tile, board.rightEnd.value);
+        
+        // Try playing on left
+        if (canPlayLeft) {
+            const simBoard = simulatePlay(board, tile, 'left');
+            const simPlayers = JSON.parse(JSON.stringify(allPlayers));
+            const tileIdx = simPlayers[playerIndex].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
+            simPlayers[playerIndex].splice(tileIdx, 1);
+            if (!isInevitableBlock(simBoard, simPlayers, playerIndex, 1, maxDepth)) {
+                hasNonBlockingMove = true;
+                break;
+            }
+        }
+        
+        // Try playing on right (skip if double and already tried left)
+        if (canPlayRight && (!isDouble(tile) || !canPlayLeft)) {
+            const simBoard = simulatePlay(board, tile, 'right');
+            const simPlayers = JSON.parse(JSON.stringify(allPlayers));
+            const tileIdx = simPlayers[playerIndex].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
+            simPlayers[playerIndex].splice(tileIdx, 1);
+            if (!isInevitableBlock(simBoard, simPlayers, playerIndex, 1, maxDepth)) {
+                hasNonBlockingMove = true;
+                break;
+            }
+        }
+    }
+    
+    // Only has alternative if: multiple playable tiles OR can play 1 tile on both ends
+    const hasMultipleOptions = playableTiles.length > 1 || 
+        (playableTiles.length === 1 && 
+         canPlayOnEnd(playableTiles[0], board.leftEnd.value) && 
+         canPlayOnEnd(playableTiles[0], board.rightEnd.value));
+    
+    return hasMultipleOptions && hasNonBlockingMove;
+}
+
+function isInevitableBlock(board, players, currentPlayer, depth, maxDepth) {
+    if (!board.leftEnd) return false;
+
+    if (depth > maxDepth) return false;
+
+    if (!isPlayableForAnyone(players, board)) {
+        return true;
+    }
+
+    const nextPlayerIndex = (playerOrder.indexOf(currentPlayer) + 1) % numPlayers;
+    const nextPlayer = playerOrder[nextPlayerIndex];
+    const nextHand = players[nextPlayer];
+    const validMoves = getValidMoves(nextHand, board);
+    if (validMoves.length === 0) {
+        return isInevitableBlock(board, players, nextPlayer, depth + 1, maxDepth);
+    }
+
+    let allLeadToBlock = true;
+    for (const move of validMoves) {
+        const simBoard = simulatePlay(board, move.tile, move.end);
+        const simPlayers = JSON.parse(JSON.stringify(players));
+        const tileIdx = simPlayers[nextPlayer].findIndex(t => t.top === move.tile.top && t.bottom === move.tile.bottom);
+        simPlayers[nextPlayer].splice(tileIdx, 1);
+        if (simPlayers[nextPlayer].length === 0) {
+            allLeadToBlock = false;
+            break;
+        }
+        if (!isInevitableBlock(simBoard, simPlayers, nextPlayer, depth + 1, maxDepth)) {
+            allLeadToBlock = false;
+            break;
+        }
+    }
+    return allLeadToBlock;
+}
+
 function handleNormalGameWin(gameState) {
     gameState.gameOver = true;
     updateScoresForWin(currentPlayer, gameState);
@@ -1512,7 +1592,7 @@ function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPla
                         prevBoardBefore,
                         playersAtPrev,
                         prevPlayer,
-                        1
+                        0
                     );
                     
                     if (prevHadNonBlockingAlt) {
@@ -1551,7 +1631,7 @@ function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPla
                         prevBoardBefore,
                         playersAtPrev,
                         prevPlayer,
-                        1
+                        0
                     );
                     
                     if (prevHadNonBlockingAlt) {
