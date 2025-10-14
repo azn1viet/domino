@@ -439,7 +439,7 @@
         <option value="500000">500000</option>
         <option value="1000000">1000000</option>
     </select>
-    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.1.5</div>
+    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.1.6</div>
 
 <script>
 let audioContext = null;
@@ -747,11 +747,11 @@ function countAllPips(players, roundHistory) {
 }
 
 function playAI(gameState) {
-    const { players, board, roundHistory } = gameState;
+    const { players, board, roundHistory, isThisFirstGame } = gameState;
     const playerHand = players[currentPlayer];
 
-    // --- START: Enforce highest double on first play for AI ---
-    if (!board.leftEnd) {
+    // --- START: Enforce highest double on first play for AI only in overall first game ---
+    if (!board.leftEnd && isThisFirstGame) {
         const doubles = playerHand.filter(tile => isDouble(tile));
         if (doubles.length > 0) {
             // Find the highest double
@@ -1040,24 +1040,16 @@ function playTile(gameState, tile, end) {
     }
 
     // Enforce highest double on first play only for overall first game
-    if (board.tiles.length === 0) {
+    if (board.tiles.length === 0 && isThisFirstGame) {
         const doubles = playerHand.filter(t => isDouble(t));
         if (doubles.length > 0) {
-            if (isThisFirstGame) {
-                const highestDouble = doubles.reduce((max, t) => t.top > max.top ? t : max, doubles[0]);
-                if (tile.top !== highestDouble.top || tile.bottom !== highestDouble.bottom) {
-                    alert("Must play highest double first!");
-                    return false;
-                }
-            } else {
-                // For subsequent games, must play a double, but any
-                if (!isDouble(tile)) {
-                    alert("Must play a double first!");
-                    return false;
-                }
+            const highestDouble = doubles.reduce((max, t) => t.top > max.top ? t : max, doubles[0]);
+            if (tile.top !== highestDouble.top || tile.bottom !== highestDouble.bottom) {
+                alert("Must play highest double first!");
+                return false;
             }
         }
-        // If no doubles, allow any tile
+        // For non-first games, no enforcement
     }
 
     const { V_W, V_H, H_W, H_H, FULL, OFFSET } = getTileSizes();
@@ -1729,9 +1721,9 @@ players[index].forEach((tile, tileIdx) => {
         if (!gameOver && index === 0) {
             let isPlayable = false;
             if (board.tiles.length === 0) {
-                const doubles = players[0].filter(t => isDouble(t));
-                if (doubles.length > 0) {
-                    if (isThisFirstGame) {
+                if (isThisFirstGame) {
+                    const doubles = players[0].filter(t => isDouble(t));
+                    if (doubles.length > 0) {
                         if (highestDoubleInHand) {
                             if (tile.top === highestDoubleInHand.top && tile.bottom === highestDoubleInHand.bottom) {
                                 isPlayable = true;
@@ -1740,7 +1732,7 @@ players[index].forEach((tile, tileIdx) => {
                             isPlayable = true;
                         }
                     } else {
-                        isPlayable = isDouble(tile);
+                        isPlayable = true;
                     }
                 } else {
                     isPlayable = true;
@@ -1882,20 +1874,18 @@ players[index].forEach((tile, tileIdx) => {
                 rightBtn.style.display = 'none';
 
                 if (board.tiles.length === 0) {
-                    const doubles = players[0].filter(t => isDouble(t));
-                    if (doubles.length > 0) {
-                        if (isThisFirstGame) {
+                    if (isThisFirstGame) {
+                        const doubles = players[0].filter(t => isDouble(t));
+                        if (doubles.length > 0) {
                             if (highestDoubleInHand ? (selectedTileData.top === highestDoubleInHand.top && selectedTileData.bottom === highestDoubleInHand.bottom) : true) {
                                 rightBtn.style.display = 'inline-block';
                                 rightBtn.textContent = `Play First`;
                                 rightBtn.onclick = () => { const currentSelected = players[0][gameState.selectedIndex]; playTile(gameState, currentSelected, 'right'); };
                             }
                         } else {
-                            if (isDouble(selectedTileData)) {
-                                rightBtn.style.display = 'inline-block';
-                                rightBtn.textContent = `Play First`;
-                                rightBtn.onclick = () => { const currentSelected = players[0][gameState.selectedIndex]; playTile(gameState, currentSelected, 'right'); };
-                            }
+                            rightBtn.style.display = 'inline-block';
+                            rightBtn.textContent = `Play First`;
+                            rightBtn.onclick = () => { const currentSelected = players[0][gameState.selectedIndex]; playTile(gameState, currentSelected, 'right'); };
                         }
                     } else {
                         rightBtn.style.display = 'inline-block';
