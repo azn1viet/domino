@@ -401,7 +401,7 @@
         #new-game:hover {
             background: #0f0;
         }
-        #tileMode {
+        /*#tileMode {
             position: fixed;
             bottom: 10px;
             left: 10px;
@@ -411,7 +411,7 @@
             border: 1px solid #0f0;
             padding: 5px;
             font-size: 14px;
-        }
+        }*/
         #bets {
             position: fixed;
             bottom: 10px;
@@ -428,6 +428,51 @@
         border: 2px solid #0ff !important;
         box-shadow: 0 0 10px #0ff !important;
     }
+	  #options-button {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            z-index: 200;
+            padding: 8px 15px;
+            background: #0f0;
+            color: black;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        #options-button:hover {
+            background: #0c0;
+            transform: scale(1.05);
+        }
+        #options-menu {
+            position: fixed;
+            bottom: 50px;
+            left: 10px;
+            background: #444;
+            border: 2px solid #0f0;
+            border-radius: 5px;
+            padding: 10px;
+            z-index: 201;
+            display: none;
+            color: #add8e6;
+            font-size: 14px;
+        }
+        #options-menu label {
+            display: block;
+            margin: 5px 0;
+        }
+        #options-menu select {
+            background: #444;
+            color: #add8e6;
+            border: 1px solid #0f0;
+            border-radius: 3px;
+            padding: 2px;
+            font-size: 14px;
+            margin-left: 5px;
+        }
+	
     </style>
 </head>
 <body>
@@ -441,10 +486,41 @@
         <div class="player-hand player-north" data-player="2"></div>
         <div class="player-hand player-west" data-player="3"></div>
     </div>
+ <button id="options-button">Options</button>
+
+<div id="options-menu">
+  <label>Tile Mode:
     <select id="tileMode">
-        <option value="Close">Close tiles</option>
-        <option value="Open">Open tiles</option>
+      <option value="Open">Open</option>
+      <option value="Close" selected>Close</option>
     </select>
+  </label>
+
+  <label>Background Color:
+    <select id="backgroundColor">
+      <option value="white">White</option>
+      <option value="olive">Olive</option>
+      <option value="teal">Teal</option>
+      <option value="indigo">Indigo</option>
+	   <option value="gold">Gold</option>
+      <option value="#444" selected>Grey</option>
+    </select>
+  </label>
+
+  <label>Sound:
+    <select id="sound">
+      <option value="On" selected>On</option>
+      <option value="Off">Off</option>
+    </select>
+  </label>
+
+  <label>Fun Voice:
+    <select id="funVoice">
+      <option value="On">On</option>
+      <option value="Off" selected>Off</option>
+    </select>
+  </label>
+</div>
     <select id="bets">
         <option value="1000">1000</option>
         <option value="10000" selected>10000</option>
@@ -454,15 +530,20 @@
         <option value="500000">500000</option>
         <option value="1000000">1000000</option>
     </select>
-    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.2.5</div>
+    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.2.7</div>
 
 <script>
 let audioContext = null;
-let canPlaySound = false;
+let canPlaySound = true; // Changed to true to match Sound: On default
+let soundLocked = false; // new flag to prevent overwriting by other code
+let funVoice = false; // Added for Fun Voice default Off
 let tileMode = 'Close';
+let backgroundColor = '#444';
 let bet = 10000;
 let isOverallFirstGame = true;
 let draggedTile = null;
+
+
 
 function abbreviate(num) {
     if (num >= 1e9) {
@@ -1888,7 +1969,7 @@ players[index].forEach((tile, tileIdx) => {
                 // FIXED: Clear selection on dragstart to prevent "Invalid move"
                 tileDiv.ondragstart = (e) => { 
                     initAudioContext(); 
-                    canPlaySound = true; 
+                    if (!soundLocked) canPlaySound = true;
                     draggedTile = tile;
                     // Clear selection when starting drag
                     gameState.selectedIndex = -1;
@@ -1897,7 +1978,7 @@ players[index].forEach((tile, tileIdx) => {
                 
                 tileDiv.addEventListener('touchstart', (e) => {
                     initAudioContext();
-                    canPlaySound = true;
+                   if (!soundLocked) canPlaySound = true;
                     draggedTile = tile;
                     // Clear selection when starting touch drag
                     gameState.selectedIndex = -1;
@@ -1994,7 +2075,7 @@ players[index].forEach((tile, tileIdx) => {
                 });
             }
             
-            tileDiv.onclick = (e) => { initAudioContext(); canPlaySound = true; e.stopPropagation(); if (tileDiv.dataset.justMoved === 'true') { delete tileDiv.dataset.justMoved; return; } handleTileClick(gameState, tileIdx, playButtons); };
+            tileDiv.onclick = (e) => { initAudioContext(); if (!soundLocked) canPlaySound = true; e.stopPropagation(); if (tileDiv.dataset.justMoved === 'true') { delete tileDiv.dataset.justMoved; return; } handleTileClick(gameState, tileIdx, playButtons); };
             if (selectedIndex === tileIdx) tileDiv.classList.add('selected');
         }
     }
@@ -2052,18 +2133,47 @@ players[index].forEach((tile, tileIdx) => {
 }
 
 let gameState = setupGame();
-renderGame(gameState);
-document.getElementById('tileMode').addEventListener('change', function(e) {
+
+document.getElementById('options-button').onclick = () => {
+    const menu = document.getElementById('options-menu');
+    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+};
+
+document.getElementById('tileMode').onchange = (e) => {
     tileMode = e.target.value;
     renderGame(gameState);
-});
+};
+
+document.getElementById('backgroundColor').onchange = (e) => {
+    backgroundColor = e.target.value;
+    renderGame(gameState);
+};
+
+document.getElementById('funVoice').onchange = (e) => {
+    funVoice = e.target.value === 'On';
+};
 document.getElementById('bets').addEventListener('change', function(e) {
     bet = parseInt(e.target.value);
 });
-document.addEventListener('click', () => {
-    initAudioContext();
-    canPlaySound = true;
-}, {once: true});
+
+document.addEventListener('DOMContentLoaded', () => {
+  const soundSelect = document.getElementById('sound');
+  soundSelect.addEventListener('change', (e) => {
+    if (e.target.value === 'Off') {
+      canPlaySound = false;
+      soundLocked = true; // lock sound state
+      console.log('Sound OFF (locked)');
+    } else {
+      canPlaySound = true;
+      soundLocked = false; // allow automatic sound again
+      console.log('Sound ON (unlocked)');
+    }
+  });
+});
+
+
+renderGame(gameState);
+
 // Optional: Show a brief prompt if AI starts first
 if (!gameState.gameOver && currentPlayer !== 0) {
     const prompt = document.createElement('div');
@@ -2084,6 +2194,29 @@ if (!gameState.gameOver && currentPlayer !== 0) {
     };
     document.addEventListener('click', startAIGame, {once: true});
 }
+document.addEventListener('DOMContentLoaded', () => {
+  const bgSelect = document.getElementById('backgroundColor');
+
+  // Set initial background
+  document.body.style.background = bgSelect.value;
+
+  // Listen for changes
+  bgSelect.addEventListener('change', (e) => {
+    const color = e.target.value;
+
+    // If user picks custom color code (#444, etc.)
+    document.body.style.background = color;
+
+    // Optional: change text or border colors for readability
+    if (color === '#444') {
+      document.body.style.color = '#fff';
+    } 
+	  else {
+      document.body.style.color = '#000';
+    }
+  });
+}); 
+
 </script>
 </body>
 </html>
