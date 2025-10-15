@@ -1,9 +1,7 @@
-<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<link rel="icon" href="https://azn1viet.github.io/favicon.ico" type="image/x-icon">
     <title>Block Dominoes</title>
     <style>
         :root {
@@ -27,7 +25,7 @@
             top: 113px;
             left: 50px;
             right: 50px;
-            bottom: 90px;
+            bottom: 113px;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -56,7 +54,7 @@
             align-items: center;
         }
         .player-south { 
-            bottom: -5px; 
+            bottom: 0px; 
             left: 50%; 
             transform: translateX(-50%); 
             width: 100vw;
@@ -65,7 +63,7 @@
         }
         .player-east { 
             top: 50%; 
-            right: -30px; 
+            right: -25px; 
             transform: translateY(-50%);
             height: 100vh;
             display: flex;
@@ -79,12 +77,12 @@
             margin-right: -30px;
         }
         .player-north { 
-            top: 5px; 
+            top: -17px; 
             left: 50%; 
             transform: translateX(-50%);
             width: 100vw;
             justify-content: center;
-            height: 150px;
+            height: 140px;
         }
 		  .player-east .score {
             transform: rotate(-90deg) translateY(50%);
@@ -92,7 +90,7 @@
         }
         .player-west { 
             top: 50%; 
-            left: -25px; 
+            left: -20px; 
             transform: translateY(-50%);
             height: 100vh;
             display: flex;
@@ -294,10 +292,11 @@
         .score {
             font-size: 14px;
             font-weight: bold;
-            color: #add8e6;
+            color: #fff;
+			left:-50px;
             margin: 3px 0;
             z-index: 101;
-            text-shadow: 0 0 5px #0f0;
+            text-shadow: 0 0 5px #fff;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -308,44 +307,44 @@
             width: 25px;
             display: inline-block;
             text-align: center;
-            color: lime;
+           color: #0f0;
         }
         .score-text {
             white-space: nowrap;
+			margin-left: 10px;
+			color: #0f0;
         }
         .score-number {
             position: relative;
             display: inline-block;
-            margin-left: 30px;
+            margin-left: 50px;	
         }
-        .coins-container {
-            position: absolute;
-            z-index: 1;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 60px;
-            height: 20px;
-            pointer-events: none;
-        }
-        .coins-container .coin {
-            position: absolute;
-            font-size: 18px;
-        }
-        .coins-container .coin:nth-child(1) {
-            top: 0;
-            left: 0;
-        }
-        .coins-container .coin:nth-child(2) {
-            top: 0;
-            left: 10px;
-        }
-        .coins-container .coin:nth-child(3) {
-            top: 0;
-            left: 20px;
-        }
+
+.coins-container {
+    position: absolute;
+    z-index: 1;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    height: 20px;
+    pointer-events: none;
+    display: flex;            /* ← ADDED flex layout */
+    align-items: center;      /* ← ADDED */
+}
+.coins-container .coin {
+    font-size: 18px;
+    margin-left: -8px;        /* ← ADDED overlap effect */
+	opacity: 0.5;
+}
+.coins-container .coin:first-child {
+    margin-left: 0;           /* ← ADDED no margin for first coin */
+}
+.coins-container.yellow .coin { filter: none; }
+.coins-container.violet .coin { filter: brightness(0) saturate(100%) invert(69%) sepia(23%) saturate(1988%) hue-rotate(248deg) brightness(104%) contrast(87%); }
+.coins-container.blue .coin { filter: brightness(0) saturate(100%) invert(9%) sepia(97%) saturate(7178%) hue-rotate(248deg) brightness(94%) contrast(143%); }
+.coins-container.red .coin { filter: brightness(0) saturate(100%) invert(35%) sepia(71%) saturate(6921%) hue-rotate(350deg) brightness(88%) contrast(133%); }
         .play-buttons {
-            margin-top: 5px;
+            margin-top: 0px;
             display: flex;
             gap: 5px;
             justify-content: center;
@@ -370,7 +369,7 @@
         }
         #new-game {
             position: fixed;
-            top: 75%;
+            bottom: 95px;
             left: 50%;
             transform: translate(-50%, -50%);
             padding: 15px 30px;
@@ -431,7 +430,6 @@
         <option value="Close">Close tiles</option>
         <option value="Open">Open tiles</option>
     </select>
-<div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.0.0</div>
     <select id="bets">
         <option value="1000">1000</option>
         <option value="10000" selected>10000</option>
@@ -441,13 +439,14 @@
         <option value="500000">500000</option>
         <option value="1000000">1000000</option>
     </select>
+    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.2.4</div>
 
 <script>
 let audioContext = null;
 let canPlaySound = false;
 let tileMode = 'Close';
 let bet = 10000;
-let isFirstGameEver = true; // Flag for the very first game
+let isOverallFirstGame = true;
 let draggedTile = null;
 
 function abbreviate(num) {
@@ -618,10 +617,9 @@ function setupGame() {
         offsetY: 0
     };
     
-    let requiredFirstTile = null; // New: To store the mandatory starting tile
-
     // Determine the starting player
-    if (isFirstGameEver) {
+    const isThisFirstGame = isOverallFirstGame;
+    if (isThisFirstGame) {
         // For the very first game, find the player with the highest double
         let starter = 0;
         let found = false;
@@ -629,14 +627,13 @@ function setupGame() {
             for (let p = 0; p < numPlayers; p++) {
                 if (players[p].some(t => t.top === n && t.bottom === n)) {
                     starter = p;
-                    requiredFirstTile = { top: n, bottom: n }; // New: Store the required tile
                     found = true;
                     break;
                 }
             }
         }
         currentPlayer = starter;
-        isFirstGameEver = false; // Ensure this logic only runs once
+        isOverallFirstGame = false; // Ensure this logic only runs once
     } else {
         // For all subsequent games, the designated starter begins
         currentPlayer = nextGameStarter;
@@ -645,7 +642,7 @@ function setupGame() {
     const roundHistory = [];
 
 
-    return {players, boneyard, board, prevBoard: null, gameOver: false, roundHistory, selectedIndex: -1, requiredFirstTile};
+    return {players, boneyard, board, prevBoard: null, gameOver: false, roundHistory, selectedIndex: -1, isThisFirstGame};
 }
 function isDouble(tile) {
     return tile.top === tile.bottom;
@@ -721,8 +718,6 @@ function simulatePlay(board, tile, end) {
     return { leftEnd: simLeftEnd, rightEnd: simRightEnd };
 }
 
-// +++ START OF NEW AI LOGIC +++
-
 // Helper function to check if any player can make a move on the simulated board.
 function isPlayableForAnyone(players, board) {
     if (!board.leftEnd) return true; // Before first move, anyone can play.
@@ -751,68 +746,166 @@ function countAllPips(players, roundHistory) {
     return counts;
 }
 
-function playAI(gameState) {
-    const { players, board, roundHistory, requiredFirstTile } = gameState;
-    const playerHand = players[currentPlayer];
-
-    // Handle mandatory first move
-    if (board.tiles.length === 0 && requiredFirstTile) {
-        playTile(gameState, requiredFirstTile, 'right');
-        return;
-    }
-    
-    let bestMove = { tile: null, end: null, score: -Infinity };
-
+function getValidMoves(hand, board) {
     const validMoves = [];
     if (!board.leftEnd) {
-        playerHand.forEach(tile => validMoves.push({ tile, end: 'right' }));
+        hand.forEach(tile => validMoves.push({ tile, end: 'right' }));
     } else {
-        playerHand.forEach(tile => {
-            const canPlayLeft = canPlayOnEnd(tile, board.leftEnd.value);
-            const canPlayRight = canPlayOnEnd(tile, board.rightEnd.value);
-            if (canPlayLeft) {
+        hand.forEach(tile => {
+            const canLeft = canPlayOnEnd(tile, board.leftEnd.value);
+            const canRight = canPlayOnEnd(tile, board.rightEnd.value);
+            if (canLeft) {
                 validMoves.push({ tile, end: 'left' });
             }
-            if (canPlayRight) {
-                if (!isDouble(tile) || !canPlayLeft) {
+            if (canRight) {
+                if (!isDouble(tile) || !canLeft) {
                     validMoves.push({ tile, end: 'right' });
                 }
             }
         });
     }
+    return validMoves;
+}
+
+function isInevitableBlock(board, players, currentPlayer, depth, maxDepth = 3) {
+    if (depth > maxDepth) {
+        return false;
+    }
+
+    if (!isPlayableForAnyone(players, board)) {
+        return true;
+    }
+
+    let nextIndex = (playerOrder.indexOf(currentPlayer) + 1) % numPlayers;
+    let nextPlayer = playerOrder[nextIndex];
+    let validMoves = getValidMoves(players[nextPlayer], board);
+
+    while (validMoves.length === 0 && nextIndex !== playerOrder.indexOf(currentPlayer)) {
+        nextIndex = (nextIndex + 1) % numPlayers;
+        nextPlayer = playerOrder[nextIndex];
+        validMoves = getValidMoves(players[nextPlayer], board);
+    }
+
+    if (validMoves.length === 0) {
+        return true;
+    }
+
+    let allLeadToBlock = true;
+    for (const move of validMoves) {
+        const simBoard = simulatePlay(board, move.tile, move.end);
+        const simPlayers = JSON.parse(JSON.stringify(players));
+        const tileIndex = simPlayers[nextPlayer].findIndex(t => t.top === move.tile.top && t.bottom === move.tile.bottom);
+        simPlayers[nextPlayer].splice(tileIndex, 1);
+
+        if (simPlayers[nextPlayer].length === 0) {
+            return false; // Leads to win, not block
+        }
+
+        if (!isInevitableBlock(simBoard, simPlayers, nextPlayer, depth + 1, maxDepth)) {
+            allLeadToBlock = false;
+            break;
+        }
+    }
+    return allLeadToBlock;
+}
+
+function hasPreventingAlternative(hand, board, allPlayers, playerIndex, maxDepth = 3) {
+    const validMoves = getValidMoves(hand, board);
+    if (validMoves.length === 0) return false;
+
+    let hasMultipleOptions = validMoves.length > 1 ||
+        (validMoves.length === 1 &&
+         canPlayOnEnd(validMoves[0].tile, board.leftEnd ? board.leftEnd.value : null) &&
+         canPlayOnEnd(validMoves[0].tile, board.rightEnd ? board.rightEnd.value : null) &&
+         board.leftEnd && board.rightEnd && board.leftEnd.value !== board.rightEnd.value);
+    if (!hasMultipleOptions) return false;
+
+    let hasNonBlockingMove = false;
+    for (const move of validMoves) {
+        const simBoard = simulatePlay(board, move.tile, move.end);
+        const simPlayers = JSON.parse(JSON.stringify(allPlayers));
+        const tileIndex = simPlayers[playerIndex].findIndex(t => t.top === move.tile.top && t.bottom === move.tile.bottom);
+        simPlayers[playerIndex].splice(tileIndex, 1);
+
+        if (simPlayers[playerIndex].length === 0) {
+            hasNonBlockingMove = true;
+            break;
+        }
+
+        if (!isInevitableBlock(simBoard, simPlayers, playerIndex, 1, maxDepth)) {
+            hasNonBlockingMove = true;
+            break;
+        }
+    }
+    return hasNonBlockingMove;
+}
+
+function playAI(gameState) {
+    const { players, board, roundHistory, isThisFirstGame } = gameState;
+    const playerHand = players[currentPlayer];
+
+    // --- START: Enforce highest double on first play for AI only in overall first game ---
+    if (!board.leftEnd && isThisFirstGame) {
+        const doubles = playerHand.filter(tile => isDouble(tile));
+        if (doubles.length > 0) {
+            // Find the highest double
+            let highestDouble = doubles.reduce((max, tile) => tile.top > max.top ? tile : max, doubles[0]);
+            // Play the highest double
+            playTile(gameState, highestDouble, 'right');
+            return; // Exit the function after playing
+        }
+    }
+    // --- END: Enforce highest double on first play for AI ---
+
+    let bestMove = { tile: null, end: null, score: -Infinity };
+
+    const validMoves = getValidMoves(playerHand, board);
 
     if (validMoves.length === 0) {
         return;
     }
-
-    // --- Performance Refactor: Pre-calculate move outcomes ---
-    const movesWithResults = validMoves.map(move => {
-        const simBoard = simulatePlay(board, move.tile, move.end);
-        const simPlayers = JSON.parse(JSON.stringify(players));
-        const tileIndex = simPlayers[currentPlayer].findIndex(t => t.top === move.tile.top && t.bottom === move.tile.bottom);
-        simPlayers[currentPlayer].splice(tileIndex, 1);
-        const isBlock = !isPlayableForAnyone(simPlayers, simBoard);
-        return { ...move, isBlock, simPlayers, simBoard };
-    });
-
-    const hadNonBlockingAlternative = movesWithResults.some(m => !m.isBlock);
-
-    for (const move of movesWithResults) {
+    
+    for (const move of validMoves) {
         let score = 0;
-        const { tile, end, isBlock, simPlayers, simBoard } = move;
+        const { tile, end } = move;
+
+        const simBoard = simulatePlay(board, tile, end);
+        const simPlayers = JSON.parse(JSON.stringify(players));
+        const tileIndex = simPlayers[currentPlayer].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
+        simPlayers[currentPlayer].splice(tileIndex, 1);
 
         if (simPlayers[currentPlayer].length === 0) {
-            score = 1000000;
+            score = 1000000; 
             bestMove = { tile, end, score };
             break;
         }
+
+        const isBlock = !isPlayableForAnyone(simPlayers, simBoard);
         
         if (isBlock) {
             const simValues = computePlayerValues(simPlayers);
             const myValue = simValues[currentPlayer];
             const minValue = Math.min(...simValues);
+
             if (myValue <= minValue) {
-                score += hadNonBlockingAlternative ? 5000 : 2500;
+                let hadNonBlockingAlternative = false;
+                for (const otherMove of validMoves) {
+                    if (otherMove.tile === move.tile && otherMove.end === move.end) continue;
+                    const otherSimBoard = simulatePlay(board, otherMove.tile, otherMove.end);
+                    const otherSimPlayers = JSON.parse(JSON.stringify(players));
+                    const otherTileIndex = otherSimPlayers[currentPlayer].findIndex(t => t.top === otherMove.tile.top && t.bottom === otherMove.tile.bottom);
+                    otherSimPlayers[currentPlayer].splice(otherTileIndex, 1);
+                    if (isPlayableForAnyone(otherSimPlayers, otherSimBoard)) {
+                        hadNonBlockingAlternative = true;
+                        break;
+                    }
+                }
+                
+                if (hadNonBlockingAlternative) {
+                    score += 5000;
+                } else {
+                    score += 2500;
+                }
             } else {
                 score -= 10000;
             }
@@ -830,8 +923,10 @@ function playAI(gameState) {
             }
 
             const pipsCount = countAllPips(players, roundHistory);
-            score += (8 - pipsCount[simBoard.leftEnd.value]) * 5;
-            score += (8 - pipsCount[simBoard.rightEnd.value]) * 5;
+            const leftEndVal = simBoard.leftEnd.value;
+            const rightEndVal = simBoard.rightEnd.value;
+            score += (8 - pipsCount[leftEndVal]) * 5;
+            score += (8 - pipsCount[rightEndVal]) * 5;
         }
 
         if (score > bestMove.score) {
@@ -841,12 +936,13 @@ function playAI(gameState) {
 
     if (bestMove.tile) {
         playTile(gameState, bestMove.tile, bestMove.end);
-    } else if (validMoves.length > 0) {
-        playTile(gameState, validMoves[0].tile, validMoves[0].end);
+    } else {
+         console.error("AI couldn't decide on a move. Playing first valid move.");
+         if (validMoves.length > 0) {
+            playTile(gameState, validMoves[0].tile, validMoves[0].end);
+         }
     }
 }
-
-// +++ END OF NEW AI LOGIC +++
 
 function calculatePlacement(board, end, tableRect, tile) {
     const { V_W, V_H, H_W, H_H, FULL, OFFSET } = getTileSizes();
@@ -982,18 +1078,25 @@ function rotateTile(tile) {
 }
 
 function handleTileClick(gameState, tileIndex, playButtons) {
-    const { players, selectedIndex } = gameState;
+    const { players, selectedIndex, board, isThisFirstGame } = gameState;
     const hand = players[0];
     const clickedTile = hand[tileIndex];
 
     if (selectedIndex === -1) {
-        // First click: select without rotate
         gameState.selectedIndex = tileIndex;
     } else if (selectedIndex === tileIndex) {
-        // Click same: rotate
+        // Don't rotate if it's first move with highest double requirement for overall first game
+        if (board.tiles.length === 0 && isThisFirstGame) {
+            const doubles = hand.filter(t => isDouble(t));
+            if (doubles.length > 0) {
+                const highestDouble = doubles.reduce((max, t) => t.top > max.top ? t : max, doubles[0]);
+                if (clickedTile.top === highestDouble.top && clickedTile.bottom === highestDouble.bottom) {
+                    return; // Don't rotate required highest double
+                }
+            }
+        }
         hand[tileIndex] = rotateTile(clickedTile);
     } else {
-        // Click different: swap and deselect
         const selectedTile = hand[selectedIndex];
         hand[selectedIndex] = clickedTile;
         hand[tileIndex] = selectedTile;
@@ -1004,60 +1107,51 @@ function handleTileClick(gameState, tileIndex, playButtons) {
 }
 
 function playTile(gameState, tile, end) {
-    const { players, board, roundHistory, requiredFirstTile } = gameState; // Add requiredFirstTile
+    const { players, board, roundHistory, isThisFirstGame } = gameState;
     const playerHand = players[currentPlayer];
     const tileIndex = playerHand.findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
     
-    if (tileIndex === -1) {
-        // This case should ideally not be reached with proper UI controls.
+    if (tileIndex === -1 || !canPlayTile(tile, board)) {
+        alert("Invalid move!");
         return false;
     }
 
-    // New: Enforce the starting tile rule
-    const isFirstMoveOfGame = board.tiles.length === 0;
-    if (isFirstMoveOfGame && requiredFirstTile) {
-        if (tile.top !== requiredFirstTile.top || tile.bottom !== requiredFirstTile.bottom) {
-            alert(`You must start the game with your highest double: ${requiredFirstTile.top}-${requiredFirstTile.bottom}.`);
-            return false;
+    // Enforce highest double on first play only for overall first game
+    if (board.tiles.length === 0 && isThisFirstGame) {
+        const doubles = playerHand.filter(t => isDouble(t));
+        if (doubles.length > 0) {
+            const highestDouble = doubles.reduce((max, t) => t.top > max.top ? t : max, doubles[0]);
+            if (tile.top !== highestDouble.top || tile.bottom !== highestDouble.bottom) {
+                alert("Must play highest double first!");
+                return false;
+            }
         }
-    } else if (!isFirstMoveOfGame && !canPlayTile(tile, board)) {
-        // For any move other than the first, check if it's a valid play on the ends.
-        alert("Invalid move! This tile doesn't match the ends of the board.");
-        return false;
+        // For non-first games, no enforcement
     }
 
-   // Inside playTile() function, this section was fixed:
+    const { V_W, V_H, H_W, H_H, FULL, OFFSET } = getTileSizes();
 
-const { V_W, V_H, H_W, H_H, FULL, OFFSET } = getTileSizes();
+    gameState.prevBoard = board.leftEnd ? {
+        leftEnd: {...board.leftEnd}, 
+        rightEnd: {...board.rightEnd}
+    } : null;
 
-gameState.prevBoard = board.leftEnd ? {
-    leftEnd: {...board.leftEnd}, 
-    rightEnd: {...board.rightEnd}
-} : null;
-
-// FIXED: Calculate hadAlternativeMove BEFORE removing tile
-let hadAlternativeMove = false;
-if (board.leftEnd) {
-    const playersBeforeMove = players.map(hand => [...hand]);
-    hadAlternativeMove = hasNonBlockingAlternative(playerHand, board, playersBeforeMove, currentPlayer);
-}
-
-const playedTile = playerHand.splice(tileIndex, 1)[0];
-
-if (currentPlayer === 0) {
-    gameState.selectedIndex = -1;
-}
-
-// Log to history with hadAlternativeMove flag
-if(roundHistory) {
-    roundHistory.push({
-        player: currentPlayer,
-        playedTile: {...playedTile},
-        end: end,
-        boardBefore: gameState.prevBoard,
-        hadAlternativeMove: hadAlternativeMove
-    });
-}
+    const playedTile = playerHand.splice(tileIndex, 1)[0];
+    
+    // Reset selection if player 0 played
+    if (currentPlayer === 0) {
+        gameState.selectedIndex = -1;
+    }
+    
+    // FIXED: Store minimal info in round history - we'll recalculate alternatives when needed
+    if(roundHistory) {
+        roundHistory.push({
+            player: currentPlayer,
+            playedTile: {...playedTile},
+            end: end,
+            boardBefore: gameState.prevBoard
+        });
+    }
     
     const tableDiv = document.getElementById('table');
     const tableRect = tableDiv.getBoundingClientRect();
@@ -1072,7 +1166,6 @@ if(roundHistory) {
     if (isFirst) {
         const isFirstDouble = isDouble(playedTile);
         if (isFirstDouble) {
-            // Fixed: Place first double vertically
             isHorizontal = false;
             x = tableRect.width / 2 - V_W / 2;
             y = tableRect.height / 2 - V_H / 2;
@@ -1084,7 +1177,6 @@ if(roundHistory) {
             board.leftEnd = { value: playedTile.top, x: centerX, y: topY, dir: 'left', openSide: 'up' };
             board.rightEnd = { value: playedTile.bottom, x: centerX, y: bottomY, dir: 'right', openSide: 'down' };
         } else {
-            // Original horizontal for non-double first
             x = tableRect.width / 2 - H_W / 2;
             y = tableRect.height / 2 - H_H / 2;
             isHorizontal = true;
@@ -1097,7 +1189,7 @@ if(roundHistory) {
         }
     } else {
         e = (end === 'left') ? board.leftEnd : board.rightEnd;
-        const placement = calculatePlacement(board, end, tableRect, playedTile); // Pass tile for double priority
+        const placement = calculatePlacement(board, end, tableRect, playedTile);
         x = placement.x;
         y = placement.y;
         isHorizontal = placement.isHorizontal;
@@ -1124,7 +1216,6 @@ if(roundHistory) {
                 displayBottom = connectingValue;
             }
         } else {
-            // Vertical turn
             if (turnDir === 'up') {
                 displayTop = newEndValue;
                 displayBottom = connectingValue;
@@ -1160,7 +1251,6 @@ if(roundHistory) {
     tableDiv.appendChild(tileDiv);
     board.tiles.push({ tile: { top: displayTop, bottom: displayBottom }, x, y, isHorizontal });
     
-    // Set tileIndex for the ends
     const pushedIndex = board.tiles.length - 1;
     if (board.tiles.length === 1) {
         board.leftEnd.tileIndex = pushedIndex;
@@ -1187,13 +1277,11 @@ if(roundHistory) {
     let nextIndex = (currentIndex + 1) % numPlayers;
     let nextPlayer = playerOrder[nextIndex];
 
-    // Check if immediate next can play
     if (!players[nextPlayer].some(t => canPlayTile(t, board))) {
         firstSkipped = nextPlayer;
         checkedPlayers = 1;
         nextIndex = (nextIndex + 1) % numPlayers;
         nextPlayer = playerOrder[nextIndex];
-        // Continue skipping
         while (checkedPlayers < numPlayers && !players[nextPlayer].some(t => canPlayTile(t, board))) {
             checkedPlayers++;
             nextIndex = (nextIndex + 1) % numPlayers;
@@ -1202,7 +1290,6 @@ if(roundHistory) {
     }
 
     if (checkedPlayers === numPlayers) {
-        // Game is blocked - determine if it was intentional
         handleBlockedGame(gameState, lastValidPlayer, firstSkipped, playedTile, end);
         return true;
     }
@@ -1232,8 +1319,7 @@ function updateScoresForWin(winner, gameState) {
     }
     scores[winner] += pot;
     nextGameStarter = winner;
-    let message = `Normal win for Player ${getPlayerNumber(winner)}!\n\n`;
-    message += `Player ${getPlayerNumber(winner)} wins ${abbreviate(pot)}\n\n`;
+    let message = `Player ${getPlayerNumber(winner)} wins ${abbreviate(pot)}\n\n`;
     for (let i = 0; i < numPlayers; i++) {
         if (i !== winner) {
             let pay = values[i] * bet;
@@ -1247,8 +1333,8 @@ function updateScoresForIntentionalBlockWithAssist(blocker, assistant, gameState
     let values = computePlayerValues(gameState.players);
     let minAll = Math.min(...values);
     let blockerValue = values[blocker];
-    let totalValue = values.reduce((a, b) => a + b, 0);
-    let payAmount = 2 * totalValue * bet;
+let othersTotal = values.reduce((sum, val, idx) => idx === blocker ? sum : sum + val, 0);  // Only OTHER players
+let payAmount = 2 * othersTotal * bet;
     let message;
     if (blockerValue <= minAll) {
         // blocker wins, assistant pays to blocker
@@ -1365,47 +1451,93 @@ function updateScoresForForceBlock(gameState) {
     setTimeout(() => alert(message), 100);
 }
 
+function hasPreventingAlternative(hand, board, allPlayers, playerIndex, maxDepth = 0) {
+    if (!board.leftEnd) return false;
+
+    const playableTiles = hand.filter(tile => canPlayTile(tile, board));
+    
+    if (playableTiles.length < 1) return false;
+    
+    let hasNonBlockingMove = false;
+    
+    for (const tile of playableTiles) {
+        const canPlayLeft = canPlayOnEnd(tile, board.leftEnd.value);
+        const canPlayRight = canPlayOnEnd(tile, board.rightEnd.value);
+        
+        // Try playing on left
+        if (canPlayLeft) {
+            const simBoard = simulatePlay(board, tile, 'left');
+            const simPlayers = JSON.parse(JSON.stringify(allPlayers));
+            const tileIdx = simPlayers[playerIndex].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
+            simPlayers[playerIndex].splice(tileIdx, 1);
+            if (!isInevitableBlock(simBoard, simPlayers, playerIndex, 1, maxDepth)) {
+                hasNonBlockingMove = true;
+                break;
+            }
+        }
+        
+        // Try playing on right (skip if double and already tried left)
+        if (canPlayRight && (!isDouble(tile) || !canPlayLeft)) {
+            const simBoard = simulatePlay(board, tile, 'right');
+            const simPlayers = JSON.parse(JSON.stringify(allPlayers));
+            const tileIdx = simPlayers[playerIndex].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
+            simPlayers[playerIndex].splice(tileIdx, 1);
+            if (!isInevitableBlock(simBoard, simPlayers, playerIndex, 1, maxDepth)) {
+                hasNonBlockingMove = true;
+                break;
+            }
+        }
+    }
+    
+    // Only has alternative if: multiple playable tiles OR can play 1 tile on both ends
+    const hasMultipleOptions = playableTiles.length > 1 || 
+        (playableTiles.length === 1 && 
+         canPlayOnEnd(playableTiles[0], board.leftEnd.value) && 
+         canPlayOnEnd(playableTiles[0], board.rightEnd.value));
+    
+    return hasMultipleOptions && hasNonBlockingMove;
+}
+
+function isInevitableBlock(board, players, currentPlayer, depth, maxDepth) {
+    if (!board.leftEnd) return false;
+
+    if (depth > maxDepth) return false;
+
+    if (!isPlayableForAnyone(players, board)) {
+        return true;
+    }
+
+    const nextPlayerIndex = (playerOrder.indexOf(currentPlayer) + 1) % numPlayers;
+    const nextPlayer = playerOrder[nextPlayerIndex];
+    const nextHand = players[nextPlayer];
+    const validMoves = getValidMoves(nextHand, board);
+    if (validMoves.length === 0) {
+        return isInevitableBlock(board, players, nextPlayer, depth + 1, maxDepth);
+    }
+
+    let allLeadToBlock = true;
+    for (const move of validMoves) {
+        const simBoard = simulatePlay(board, move.tile, move.end);
+        const simPlayers = JSON.parse(JSON.stringify(players));
+        const tileIdx = simPlayers[nextPlayer].findIndex(t => t.top === move.tile.top && t.bottom === move.tile.bottom);
+        simPlayers[nextPlayer].splice(tileIdx, 1);
+        if (simPlayers[nextPlayer].length === 0) {
+            allLeadToBlock = false;
+            break;
+        }
+        if (!isInevitableBlock(simBoard, simPlayers, nextPlayer, depth + 1, maxDepth)) {
+            allLeadToBlock = false;
+            break;
+        }
+    }
+    return allLeadToBlock;
+}
+
 function handleNormalGameWin(gameState) {
     gameState.gameOver = true;
     updateScoresForWin(currentPlayer, gameState);
     renderGame(gameState);
     showNewGameButton();
-}
-
-function hasNonBlockingAlternative(hand, board, allPlayers, playerIndex) {
-    for (const tile of hand) {
-        let ends = [];
-        if (canPlayOnEnd(tile, board.leftEnd.value)) ends.push('left');
-        if (canPlayOnEnd(tile, board.rightEnd.value)) ends.push('right');
-
-        for (const end of ends) {
-            const simBoard = simulatePlay(board, tile, end);
-            const simPlayers = JSON.parse(JSON.stringify(allPlayers));
-            const tileIdx = simPlayers[playerIndex].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
-            simPlayers[playerIndex].splice(tileIdx, 1);
-            if (isPlayableForAnyone(simPlayers, simBoard)) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-function hasOnlyOnePossibleMove(hand, board) {
-    if (!board.leftEnd) {
-        // For the first move, all tiles are possible (on 'right'), so more than one unless hand has only one tile
-        return hand.length === 1;
-    }
-    let possibleMoves = [];
-    hand.forEach(tile => {
-        let ends = [];
-        if (canPlayOnEnd(tile, board.leftEnd.value)) ends.push('left');
-        if (canPlayOnEnd(tile, board.rightEnd.value)) ends.push('right');
-        ends.forEach(end => {
-            possibleMoves.push({tile, end});
-        });
-    });
-    return possibleMoves.length === 1;
 }
 
 function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPlayedTile, lastPlayedEnd) {
@@ -1420,64 +1552,125 @@ function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPla
         return;
     }
     
-    const handBeforePlay = [...players[lastPlayerWhoPlayed], lastPlayedTile];
-    const lastHadAlternativeMove = hasNonBlockingAlternative(handBeforePlay, prevBoard, players, lastPlayerWhoPlayed);
+    // Reconstruct last player's hand before their move
+    const lastPlayerHandBefore = [...players[lastPlayerWhoPlayed], lastPlayedTile];
+    const playersAtLast = JSON.parse(JSON.stringify(players));
+    playersAtLast[lastPlayerWhoPlayed].push({...lastPlayedTile});
+    
+    const lastHadNonBlockingAlt = hasPreventingAlternative(
+        lastPlayerHandBefore, 
+        prevBoard, 
+        playersAtLast, 
+        lastPlayerWhoPlayed,
+        0
+    );
     
     let blocker = lastPlayerWhoPlayed;
     let assistant = -1;
     
-    if (lastHadAlternativeMove) {
-        // Last player had alternatives - they are the blocker
-        if (roundHistory.length >= 2 && roundHistory[roundHistory.length - 2].hadAlternativeMove) {
-            const prevPlayer = roundHistory[roundHistory.length - 2].player;
-            if (prevPlayer === lastPlayerWhoPlayed) {
-                // Consecutive plays by same player
-                blocker = lastPlayerWhoPlayed;
-                assistant = -1;
-            } else if (prevPlayer === getPreviousPlayer(lastPlayerWhoPlayed)) {
-                // Last player is blocker, previous is assistant
-                blocker = lastPlayerWhoPlayed;
-                assistant = prevPlayer;
+    if (lastHadNonBlockingAlt) {
+        // Last player chose to block intentionally
+        // Check if immediate previous player SET UP this block
+        if (roundHistory.length >= 2) {
+            const prevMove = roundHistory[roundHistory.length - 2];
+            const prevPlayer = prevMove.player;
+            
+            if (prevPlayer === getPreviousPlayer(lastPlayerWhoPlayed)) {
+                const prevHandBefore = [...players[prevPlayer], prevMove.playedTile];
+                const prevBoardBefore = prevMove.boardBefore;
+                
+                if (prevBoardBefore && prevBoardBefore.leftEnd) {
+                    const playersAtPrev = JSON.parse(JSON.stringify(players));
+                    for (let i = roundHistory.length - 2; i < roundHistory.length; i++) {
+                        const move = roundHistory[i];
+                        playersAtPrev[move.player].push({...move.playedTile});
+                    }
+                    
+                    // FIXED: Check if prev player had NON-BLOCKING alternative
+                    // If they could have avoided setting up the block, they're the assistant
+                    const prevHadNonBlockingAlt = hasPreventingAlternative(
+                        prevHandBefore,
+                        prevBoardBefore,
+                        playersAtPrev,
+                        prevPlayer,
+                        0
+                    );
+                    
+                    if (prevHadNonBlockingAlt) {
+                        assistant = prevPlayer;
+                    }
+                }
             }
         }
+        
         if (assistant !== -1) {
             updateScoresForIntentionalBlockWithAssist(blocker, assistant, gameState);
         } else {
             updateScoresForIntentionalBlockNoAssist(blocker, gameState);
         }
     } else {
-        // Last player had no alternatives - search for remote blocker
-        let remote = -1;
-        let remoteIndex = -1;
-        for (let i = roundHistory.length - 2; i >= 0; i--) {
-            if (roundHistory[i].hadAlternativeMove) {
-                remote = roundHistory[i].player;
-                remoteIndex = i;
-                break;
-            }
-        }
-        if (remote !== -1) {
-            // Check if remote blocker is same as last player (consecutive plays)
-            if (remote === lastPlayerWhoPlayed) {
-                blocker = remote;
-                updateScoresForIntentionalBlockNoAssist(blocker, gameState);
-            } else if (remoteIndex === roundHistory.length - 2 && remote === getPreviousPlayer(lastPlayerWhoPlayed)) {
-                // Previous player is blocker, last player is assistant - but only if last had more than one possible move
-                blocker = remote;
-                if (!hasOnlyOnePossibleMove(handBeforePlay, prevBoard)) {
-                    assistant = lastPlayerWhoPlayed;
-                    updateScoresForIntentionalBlockWithAssist(blocker, assistant, gameState);
-                } else {
-                    // Last player had only one possible move: force block, no assist
-                    updateScoresForForceBlock(gameState);
+        // Last player was forced to block
+        if (roundHistory.length >= 2) {
+            const prevMove = roundHistory[roundHistory.length - 2];
+            const prevPlayer = prevMove.player;
+            
+            if (prevPlayer === getPreviousPlayer(lastPlayerWhoPlayed)) {
+                const prevHandBefore = [...players[prevPlayer], prevMove.playedTile];
+                const prevBoardBefore = prevMove.boardBefore;
+                
+                if (prevBoardBefore && prevBoardBefore.leftEnd) {
+                    const playersAtPrev = JSON.parse(JSON.stringify(players));
+                    for (let i = roundHistory.length - 2; i < roundHistory.length; i++) {
+                        const move = roundHistory[i];
+                        playersAtPrev[move.player].push({...move.playedTile});
+                    }
+                    
+                    // Check if prev player had NON-BLOCKING alternative
+                    // If yes, they forced last player into blocking
+                    const prevHadNonBlockingAlt = hasPreventingAlternative(
+                        prevHandBefore,
+                        prevBoardBefore,
+                        playersAtPrev,
+                        prevPlayer,
+                        0
+                    );
+                    
+                    if (prevHadNonBlockingAlt) {
+                        blocker = prevPlayer;
+                        updateScoresForIntentionalBlockNoAssist(blocker, gameState);
+                        return;
+                    }
                 }
-            } else {
-                blocker = remote;
-                updateScoresForIntentionalBlockNoAssist(blocker, gameState);
             }
-        } else {
-            updateScoresForForceBlock(gameState);
         }
+        // Check for remote blocker (2 moves back)
+        if (roundHistory.length >= 3) {
+            const grandMove = roundHistory[roundHistory.length - 3];
+            const grandPlayer = grandMove.player;
+            const grandBoardBefore = grandMove.boardBefore;
+            if (grandBoardBefore && grandBoardBefore.leftEnd) {
+                const grandHandBefore = [...players[grandPlayer], grandMove.playedTile];
+                const playersAtGrand = JSON.parse(JSON.stringify(players));
+                for (let i = roundHistory.length - 3; i < roundHistory.length; i++) {
+                    const move = roundHistory[i];
+                    playersAtGrand[move.player].push({...move.playedTile});
+                }
+                const grandHadPreventingAlt = hasPreventingAlternative(
+                    grandHandBefore,
+                    grandBoardBefore,
+                    playersAtGrand,
+                    grandPlayer,
+                    2
+                );
+                if (grandHadPreventingAlt) {
+                    blocker = grandPlayer;
+                    updateScoresForIntentionalBlockNoAssist(blocker, gameState);
+                    return;
+                }
+            }
+        }
+        // If no intentional by prev or grand, it's force block
+        updateScoresForForceBlock(gameState);
     }
     
     renderGame(gameState);
@@ -1503,7 +1696,7 @@ function showNewGameButton() {
 }
 
 function renderGame(gameState) {
-    const {players, board, gameOver, selectedIndex} = gameState;
+    const {players, board, gameOver, selectedIndex, isThisFirstGame} = gameState;
     const tableDiv = document.getElementById('table');
     
     tableDiv.innerHTML = '';
@@ -1522,43 +1715,26 @@ function renderGame(gameState) {
             if (isLeftEnd) {
                 const openSide = board.leftEnd.openSide;
                 if (isHorizontal) {
-                    if (openSide === 'left') {
-                        tileDiv.classList.add(isDoubleEnd ? 'double-end-left' : 'end-left');
-                    } else if (openSide === 'right') {
-                        tileDiv.classList.add(isDoubleEnd ? 'double-end-right' : 'end-right');
-                    }
+                    if (openSide === 'left') tileDiv.classList.add(isDoubleEnd ? 'double-end-left' : 'end-left');
+                    else if (openSide === 'right') tileDiv.classList.add(isDoubleEnd ? 'double-end-right' : 'end-right');
                 } else {
-                    if (openSide === 'up') {
-                        tileDiv.classList.add(isDoubleEnd ? 'double-end-top' : 'end-top');
-                    } else if (openSide === 'down') {
-                        tileDiv.classList.add(isDoubleEnd ? 'double-end-bottom' : 'end-bottom');
-                    }
+                    if (openSide === 'up') tileDiv.classList.add(isDoubleEnd ? 'double-end-top' : 'end-top');
+                    else if (openSide === 'down') tileDiv.classList.add(isDoubleEnd ? 'double-end-bottom' : 'end-bottom');
                 }
             }
             if (isRightEnd) {
                 const openSide = board.rightEnd.openSide;
                 if (isHorizontal) {
-                    if (openSide === 'left') {
-                        tileDiv.classList.add(isDoubleEnd ? 'double-end-left' : 'end-left');
-                    } else if (openSide === 'right') {
-                        tileDiv.classList.add(isDoubleEnd ? 'double-end-right' : 'end-right');
-                    }
+                    if (openSide === 'left') tileDiv.classList.add(isDoubleEnd ? 'double-end-left' : 'end-left');
+                    else if (openSide === 'right') tileDiv.classList.add(isDoubleEnd ? 'double-end-right' : 'end-right');
                 } else {
-                    if (openSide === 'up') {
-                        tileDiv.classList.add(isDoubleEnd ? 'double-end-top' : 'end-top');
-                    } else if (openSide === 'down') {
-                        tileDiv.classList.add(isDoubleEnd ? 'double-end-bottom' : 'end-bottom');
-                    }
+                    if (openSide === 'up') tileDiv.classList.add(isDoubleEnd ? 'double-end-top' : 'end-top');
+                    else if (openSide === 'down') tileDiv.classList.add(isDoubleEnd ? 'double-end-bottom' : 'end-bottom');
                 }
             }
         }
         
-        let tileData;
-        if (isHorizontal) {
-            tileData = { left: tile.bottom, right: tile.top };
-        } else {
-            tileData = tile;
-        }
+        let tileData = isHorizontal ? { left: tile.bottom, right: tile.top } : tile;
         tileDiv.innerHTML = generateTileSvg(isHorizontal, tileData);
         tileDiv.style.left = `${x + board.offsetX}px`;
         tileDiv.style.top = `${y + board.offsetY}px`;
@@ -1568,14 +1744,12 @@ function renderGame(gameState) {
     let leftPlaceholder = null;
     let rightPlaceholder = null;
 
-    // Add placeholders if player 0's turn and not first tile
     if (!gameOver && currentPlayer === 0 && board.tiles.length > 0) {
-        const dummyTile = {top: 0, bottom: 0}; // dummy for placement calculation
+        const dummyTile = {top: 0, bottom: 0};
         const tableRect = tableDiv.getBoundingClientRect();
         const hand = players[0];
 
-        const canPlayLeft = hand.some(tile => canPlayOnEnd(tile, board.leftEnd.value));
-        if (canPlayLeft) {
+        if (hand.some(tile => canPlayOnEnd(tile, board.leftEnd.value))) {
             const leftPlacement = calculatePlacement(board, 'left', tableRect, dummyTile);
             leftPlaceholder = document.createElement('div');
             leftPlaceholder.className = 'table-tile placeholder';
@@ -1583,43 +1757,15 @@ function renderGame(gameState) {
             leftPlaceholder.style.left = `${leftPlacement.x + board.offsetX}px`;
             leftPlaceholder.style.top = `${leftPlacement.y + board.offsetY}px`;
             leftPlaceholder.style.border = '2px dashed #6a6a6a';
-            leftPlaceholder.style.backgroundColor = 'transparent';
             tableDiv.appendChild(leftPlaceholder);
 
-            leftPlaceholder.ondragover = (e) => {
-                e.preventDefault();
-                if (draggedTile && canPlayOnEnd(draggedTile, board.leftEnd.value)) {
-                    leftPlaceholder.style.border = '2px dashed yellow';
-                }
-            };
-            leftPlaceholder.ondragleave = (e) => {
-                leftPlaceholder.style.border = '2px dashed #6a6a6a';
-            };
-            leftPlaceholder.ondrop = (e) => {
-                e.preventDefault();
-                leftPlaceholder.style.border = '2px dashed #6a6a6a';
-                try {
-                    const tileData = JSON.parse(e.dataTransfer.getData('text/plain'));
-                    if (canPlayOnEnd(tileData, board.leftEnd.value)) {
-                        playTile(gameState, tileData, 'left');
-                    }
-                } catch (err) {
-                    console.error('Invalid drop data');
-                }
-            };
-
-            leftPlaceholder.onclick = () => {
-                if (gameState.selectedIndex !== -1) {
-                    const selectedTile = players[0][gameState.selectedIndex];
-                    if (canPlayOnEnd(selectedTile, board.leftEnd.value)) {
-                        playTile(gameState, selectedTile, 'left');
-                    }
-                }
-            };
+            leftPlaceholder.ondragover = (e) => { e.preventDefault(); if (draggedTile && canPlayOnEnd(draggedTile, board.leftEnd.value)) leftPlaceholder.style.border = '2px dashed yellow'; };
+            leftPlaceholder.ondragleave = () => { leftPlaceholder.style.border = '2px dashed #6a6a6a'; };
+            leftPlaceholder.ondrop = (e) => { e.preventDefault(); leftPlaceholder.style.border = '2px dashed #6a6a6a'; try { const tileData = JSON.parse(e.dataTransfer.getData('text/plain')); if (canPlayOnEnd(tileData, board.leftEnd.value)) playTile(gameState, tileData, 'left'); } catch (err) {} };
+            leftPlaceholder.onclick = () => { if (gameState.selectedIndex !== -1) { const selectedTile = players[0][gameState.selectedIndex]; if (canPlayOnEnd(selectedTile, board.leftEnd.value)) playTile(gameState, selectedTile, 'left'); } };
         }
 
-        const canPlayRight = hand.some(tile => canPlayOnEnd(tile, board.rightEnd.value));
-        if (canPlayRight) {
+        if (hand.some(tile => canPlayOnEnd(tile, board.rightEnd.value))) {
             const rightPlacement = calculatePlacement(board, 'right', tableRect, dummyTile);
             rightPlaceholder = document.createElement('div');
             rightPlaceholder.className = 'table-tile placeholder';
@@ -1627,332 +1773,259 @@ function renderGame(gameState) {
             rightPlaceholder.style.left = `${rightPlacement.x + board.offsetX}px`;
             rightPlaceholder.style.top = `${rightPlacement.y + board.offsetY}px`;
             rightPlaceholder.style.border = '2px dashed #6a6a6a';
-            rightPlaceholder.style.backgroundColor = 'transparent';
             tableDiv.appendChild(rightPlaceholder);
 
-            rightPlaceholder.ondragover = (e) => {
-                e.preventDefault();
-                if (draggedTile && canPlayOnEnd(draggedTile, board.rightEnd.value)) {
-                    rightPlaceholder.style.border = '2px dashed yellow';
-                }
-            };
-            rightPlaceholder.ondragleave = (e) => {
-                rightPlaceholder.style.border = '2px dashed #6a6a6a';
-            };
-            rightPlaceholder.ondrop = (e) => {
-                e.preventDefault();
-                rightPlaceholder.style.border = '2px dashed #6a6a6a';
-                try {
-                    const tileData = JSON.parse(e.dataTransfer.getData('text/plain'));
-                    if (canPlayOnEnd(tileData, board.rightEnd.value)) {
-                        playTile(gameState, tileData, 'right');
-                    }
-                } catch (err) {
-                    console.error('Invalid drop data');
-                }
-            };
-
-            rightPlaceholder.onclick = () => {
-                if (gameState.selectedIndex !== -1) {
-                    const selectedTile = players[0][gameState.selectedIndex];
-                    if (canPlayOnEnd(selectedTile, board.rightEnd.value)) {
-                        playTile(gameState, selectedTile, 'right');
-                    }
-                }
-            };
+            rightPlaceholder.ondragover = (e) => { e.preventDefault(); if (draggedTile && canPlayOnEnd(draggedTile, board.rightEnd.value)) rightPlaceholder.style.border = '2px dashed yellow'; };
+            rightPlaceholder.ondragleave = () => { rightPlaceholder.style.border = '2px dashed #6a6a6a'; };
+            rightPlaceholder.ondrop = (e) => { e.preventDefault(); rightPlaceholder.style.border = '2px dashed #6a6a6a'; try { const tileData = JSON.parse(e.dataTransfer.getData('text/plain')); if (canPlayOnEnd(tileData, board.rightEnd.value)) playTile(gameState, tileData, 'right'); } catch (err) {} };
+            rightPlaceholder.onclick = () => { if (gameState.selectedIndex !== -1) { const selectedTile = players[0][gameState.selectedIndex]; if (canPlayOnEnd(selectedTile, board.rightEnd.value)) playTile(gameState, selectedTile, 'right'); } };
         }
     }
 
-    // Setup drop zones if player 0's turn
     if (!gameOver && currentPlayer === 0) {
         if (board.tiles.length === 0) {
-            // Drop on table for first tile
             tableDiv.ondragover = (e) => e.preventDefault();
-            tableDiv.ondrop = (e) => {
-                e.preventDefault();
-                try {
-                    const tileData = JSON.parse(e.dataTransfer.getData('text/plain'));
-                    playTile(gameState, tileData, 'right');
-                } catch (err) {
-                    console.error('Invalid drop data');
-                }
-            };
-            tableDiv.onclick = () => {
-                if (gameState.selectedIndex !== -1) {
-                    const selectedTile = players[0][gameState.selectedIndex];
-                    playTile(gameState, selectedTile, 'right');
-                }
-            };
-        } else {
-            // Drop on placeholders, no need for end tiles drop
+            tableDiv.ondrop = (e) => { e.preventDefault(); try { const tileData = JSON.parse(e.dataTransfer.getData('text/plain')); playTile(gameState, tileData, 'right'); } catch (err) {} };
+            tableDiv.onclick = () => { if (gameState.selectedIndex !== -1) { const selectedTile = players[0][gameState.selectedIndex]; playTile(gameState, selectedTile, 'right'); } };
         }
     }
 
     document.querySelectorAll('.player-hand').forEach((hand, index) => {
         hand.innerHTML = '';
-        
         const scoreDiv = document.createElement('div');
         scoreDiv.className = 'score';
-        
-        const arrowSpan = document.createElement('span');
-        arrowSpan.className = 'score-arrow';
-        if (!gameOver && index === currentPlayer) {
-            arrowSpan.textContent = '➤';
-        }
-        scoreDiv.appendChild(arrowSpan);
-        
-        const playerSpan = document.createElement('span');
-        playerSpan.className = 'score-text';
-        playerSpan.textContent = `[P${getPlayerNumber(index)}]`;
-        scoreDiv.appendChild(playerSpan);
-        
-        const scoreNumber = document.createElement('div');
-        scoreNumber.className = 'score-number';
-        
-        const coinsContainer = document.createElement('div');
-        coinsContainer.className = 'coins-container';
-        for (let i = 0; i < 3; i++) {
-            const coinSpan = document.createElement('span');
-            coinSpan.className = 'coin';
-            coinSpan.innerHTML = '🪙';
-            coinsContainer.appendChild(coinSpan);
-        }
-        scoreNumber.appendChild(coinsContainer);
-        
-        const scoreSpan = document.createElement('span');
-        scoreSpan.className = 'score-text';
-        scoreSpan.style.position = 'absolute';
-        scoreSpan.style.top = '50%';
-        scoreSpan.style.left = '50%';
-        scoreSpan.style.transform = 'translate(calc(-50% - 10px), calc(-50% + 3px))';
-        scoreSpan.style.zIndex = '2';
-        scoreSpan.style.color = 'black';
-        let displayScore = scores[index];
-        if (displayScore < 0) {
-            displayScore = '-' + abbreviate(-displayScore);
-        } else {
-            displayScore = abbreviate(displayScore);
-        }
-        scoreSpan.textContent = displayScore;
-        scoreNumber.appendChild(scoreSpan);
-        
-        scoreDiv.appendChild(scoreNumber);
-        
+// AFTER
+const scoreValue = scores[index];
+const scoreText = scoreValue < 0 ? '-$' + Math.abs(scoreValue) : '$' + scoreValue;
+const scoreLength = scoreText.length;
+const numCoins = Math.max(3, Math.ceil(scoreLength / 2)) ;
+const coinsHtml = '<span class="coin">🪙</span>'.repeat(numCoins);
+let coinColorClass = 'yellow';
+if (scoreValue >= 1000000000) {
+  coinColorClass = 'red';
+} else if (scoreValue >=500000000) {
+  coinColorClass = 'blue';
+} else if (scoreValue >= 100000000) {
+  coinColorClass = 'violet';
+}
+scoreDiv.innerHTML = `<span class="score-arrow">${!gameOver && index === currentPlayer ? '➤' : ''}</span><span class="score-text">[P${getPlayerNumber(index)}]</span><div class="score-number"><div class="coins-container ${coinColorClass}">${coinsHtml}</div><span class="score-text" style="position: absolute; top: 50%; left: 50%;top: -1px; transform: translate(calc(-50% - 10px), calc(-50% + 3px)); z-index: 2; color: black;">${scoreText}</span></div>`;
+		
         const tilesContainer = document.createElement('div');
         tilesContainer.className = 'tiles-container';
-        
         let playButtons;
+        
+        let highestDoubleInHand = null;
+        if (!gameOver && index === 0 && board.tiles.length === 0 && isThisFirstGame) {
+            const doubles = players[0].filter(t => isDouble(t));
+            if (doubles.length > 0) {
+                highestDoubleInHand = doubles.reduce((max, t) => t.top > max.top ? t : max, doubles[0]);
+            }
+        }
+
         if (!gameOver && index === 0) { 
             playButtons = document.createElement('div');
             playButtons.className = 'play-buttons';
-            playButtons.innerHTML = `
-                <button class="play-left">Play Left</button>
-                <button class="play-right">Play Right</button>
-            `;
+            playButtons.innerHTML = `<button class="play-left">Play Left</button><button class="play-right">Play Right</button>`;
             playButtons.querySelectorAll('button').forEach(btn => btn.style.display = 'none');
         }
         
-        players[index].forEach((tile, tileIdx) => {
-            const tileDiv = document.createElement('div');
-            tileDiv.className = 'tile';
-            if (!gameOver && index !== 0 && tileMode === 'Close') {
-                tileDiv.innerHTML = generateBackTileSvg(false);
-            } else {
-                tileDiv.innerHTML = generateTileSvg(false, tile);
-                tileDiv.dataset.top = tile.top;
-                tileDiv.dataset.bottom = tile.bottom;
-                
-                if (!gameOver && index === 0) {
-                    // Check if playable
-                    const { requiredFirstTile } = gameState;
-                    const isFirstMoveOfGame = board.tiles.length === 0 && requiredFirstTile;
-                    
-                    let isPlayable = false;
-                    if (isFirstMoveOfGame) {
-                        // On the first move, only the required double is playable
-                        isPlayable = tile.top === requiredFirstTile.top && tile.bottom === requiredFirstTile.bottom;
+      // Inside renderGame, replace the tile creation section for player 0:
+players[index].forEach((tile, tileIdx) => {
+    const tileDiv = document.createElement('div');
+    tileDiv.className = 'tile';
+    if (!gameOver && index !== 0 && tileMode === 'Close') {
+        tileDiv.innerHTML = generateBackTileSvg(false);
+    } else {
+        tileDiv.innerHTML = generateTileSvg(false, tile);
+        tileDiv.dataset.top = tile.top;
+        tileDiv.dataset.bottom = tile.bottom;
+        
+        if (!gameOver && index === 0) {
+            let isPlayable = false;
+            if (board.tiles.length === 0) {
+                if (isThisFirstGame) {
+                    const doubles = players[0].filter(t => isDouble(t));
+                    if (doubles.length > 0) {
+                        if (highestDoubleInHand) {
+                            if (tile.top === highestDoubleInHand.top && tile.bottom === highestDoubleInHand.bottom) {
+                                isPlayable = true;
+                            }
+                        } else {
+                            isPlayable = true;
+                        }
                     } else {
-                        // For all other moves, use the standard canPlayTile check
-                        // Note: canPlayTile returns true for an empty board, so we only call it when not the first special move.
-                        isPlayable = board.tiles.length === 0 || canPlayTile(tile, board);
+                        isPlayable = true;
                     }
+                } else {
+                    isPlayable = true;
+                }
+            } else {
+                isPlayable = canPlayTile(tile, board);
+            }
 
-                    if (isPlayable && currentPlayer === 0) {
-                        tileDiv.classList.add('draggable');
-                        tileDiv.draggable = true;
-                        tileDiv.ondragstart = (e) => {
-                            initAudioContext();
-                            canPlaySound = true;
-                            draggedTile = tile;
-                            e.dataTransfer.setData('text/plain', JSON.stringify(tile));
-                        };
-                        tileDiv.addEventListener('touchstart', (e) => {
-                            initAudioContext();
-                            canPlaySound = true;
-                            draggedTile = tile;
-                            const touch = e.touches[0];
-                            const ghost = tileDiv.cloneNode(true);
-                            ghost.style.position = 'fixed';
-                            ghost.style.pointerEvents = 'none';
-                            ghost.style.zIndex = 1000;
-                            document.body.appendChild(ghost);
-                            ghost.style.left = `${touch.clientX - ghost.offsetWidth / 2}px`;
-                            ghost.style.top = `${touch.clientY - ghost.offsetHeight / 2}px`;
-                            let moved = false;
-                            const onTouchMove = (ev) => {
-                                if (ev.touches.length === 1) {
-                                    moved = true;
-                                    const t = ev.touches[0];
-                                    ghost.style.left = `${t.clientX - ghost.offsetWidth / 2}px`;
-                                    ghost.style.top = `${t.clientY - ghost.offsetHeight / 2}px`;
-                                    if (board.tiles.length > 0) {
-                                        if (leftPlaceholder) leftPlaceholder.style.border = '2px dashed #6a6a6a';
-                                        if (rightPlaceholder) rightPlaceholder.style.border = '2px dashed #6a6a6a';
-                                        const dropX = t.clientX;
-                                        const dropY = t.clientY;
-                                        if (leftPlaceholder) {
-                                            const leftRect = leftPlaceholder.getBoundingClientRect();
-                                            if (dropX > leftRect.left && dropX < leftRect.right && dropY > leftRect.top && dropY < leftRect.bottom) {
-                                                if (canPlayOnEnd(draggedTile, board.leftEnd.value)) {
-                                                    leftPlaceholder.style.border = '2px dashed yellow';
-                                                }
-                                            }
-                                        }
-                                        if (rightPlaceholder) {
-                                            const rightRect = rightPlaceholder.getBoundingClientRect();
-                                            if (dropX > rightRect.left && dropX < rightRect.right && dropY > rightRect.top && dropY < rightRect.bottom) {
-                                                if (canPlayOnEnd(draggedTile, board.rightEnd.value)) {
-                                                    rightPlaceholder.style.border = '2px dashed yellow';
-                                                }
-                                            }
+            if (isPlayable && currentPlayer === 0) {
+                tileDiv.classList.add('draggable');
+                tileDiv.draggable = true;
+                
+                // FIXED: Clear selection on dragstart to prevent "Invalid move"
+                tileDiv.ondragstart = (e) => { 
+                    initAudioContext(); 
+                    canPlaySound = true; 
+                    draggedTile = tile;
+                    // Clear selection when starting drag
+                    gameState.selectedIndex = -1;
+                    e.dataTransfer.setData('text/plain', JSON.stringify(tile)); 
+                };
+                
+                tileDiv.addEventListener('touchstart', (e) => {
+                    initAudioContext();
+                    canPlaySound = true;
+                    draggedTile = tile;
+                    // Clear selection when starting touch drag
+                    gameState.selectedIndex = -1;
+                    
+                    const touch = e.touches[0];
+                    const ghost = tileDiv.cloneNode(true);
+                    ghost.style.position = 'fixed';
+                    ghost.style.pointerEvents = 'none';
+                    ghost.style.zIndex = 1000;
+                    document.body.appendChild(ghost);
+                    ghost.style.left = `${touch.clientX - ghost.offsetWidth / 2}px`;
+                    ghost.style.top = `${touch.clientY - ghost.offsetHeight / 2}px`;
+                    let moved = false;
+                    const onTouchMove = (ev) => {
+                        ev.preventDefault();
+                        if (ev.touches.length === 1) {
+                            moved = true;
+                            const t = ev.touches[0];
+                            ghost.style.left = `${t.clientX - ghost.offsetWidth / 2}px`;
+                            ghost.style.top = `${t.clientY - ghost.offsetHeight / 2}px`;
+                            if (board.tiles.length > 0) {
+                                if (leftPlaceholder) leftPlaceholder.style.border = '2px dashed #6a6a6a';
+                                if (rightPlaceholder) rightPlaceholder.style.border = '2px dashed #6a6a6a';
+                                const dropX = t.clientX;
+                                const dropY = t.clientY;
+                                if (leftPlaceholder) {
+                                    const leftRect = leftPlaceholder.getBoundingClientRect();
+                                    if (dropX > leftRect.left && dropX < leftRect.right && dropY > leftRect.top && dropY < leftRect.bottom) {
+                                        if (canPlayOnEnd(draggedTile, board.leftEnd.value)) {
+                                            leftPlaceholder.style.border = '2px dashed yellow';
                                         }
                                     }
                                 }
-                            };
-                            const onTouchEnd = (ev) => {
-                                document.removeEventListener('touchmove', onTouchMove);
-                                document.removeEventListener('touchend', onTouchEnd);
-                                ghost.remove();
-                                if (board.tiles.length > 0) {
-                                    if (leftPlaceholder) leftPlaceholder.style.border = '2px dashed #6a6a6a';
-                                    if (rightPlaceholder) rightPlaceholder.style.border = '2px dashed #6a6a6a';
+                                if (rightPlaceholder) {
+                                    const rightRect = rightPlaceholder.getBoundingClientRect();
+                                    if (dropX > rightRect.left && dropX < rightRect.right && dropY > rightRect.top && dropY < rightRect.bottom) {
+                                        if (canPlayOnEnd(draggedTile, board.rightEnd.value)) {
+                                            rightPlaceholder.style.border = '2px dashed yellow';
+                                        }
+                                    }
                                 }
-                                if (!moved) {
-                                    draggedTile = null;
-                                    return;
+                            }
+                        }
+                    };
+                    const onTouchEnd = (ev) => {
+                        document.removeEventListener('touchmove', onTouchMove);
+                        document.removeEventListener('touchend', onTouchEnd);
+                        ghost.remove();
+                        if (board.tiles.length > 0) {
+                            if (leftPlaceholder) leftPlaceholder.style.border = '2px dashed #6a6a6a';
+                            if (rightPlaceholder) rightPlaceholder.style.border = '2px dashed #6a6a6a';
+                        }
+                        if (!moved) {
+                            draggedTile = null;
+                            return;
+                        }
+                        if (moved) {
+                            tileDiv.dataset.justMoved = 'true';
+                        }
+                        const dropTouch = ev.changedTouches[0] || {clientX: 0, clientY: 0};
+                        let dropped = false;
+                        const dropX = dropTouch.clientX;
+                        const dropY = dropTouch.clientY;
+                        if (board.tiles.length === 0) {
+                            const tableRect = tableDiv.getBoundingClientRect();
+                            if (dropX > tableRect.left && dropX < tableRect.right && dropY > tableRect.top && dropY < tableRect.bottom) {
+                                playTile(gameState, draggedTile, 'right');
+                                dropped = true;
+                            }
+                        } else {
+                            if (leftPlaceholder) {
+                                const leftRect = leftPlaceholder.getBoundingClientRect();
+                                if (dropX > leftRect.left && dropX < leftRect.right && dropY > leftRect.top && dropY < leftRect.bottom) {
+                                    if (canPlayOnEnd(draggedTile, board.leftEnd.value)) {
+                                        playTile(gameState, draggedTile, 'left');
+                                        dropped = true;
+                                    }
                                 }
-                                if (moved) {
-                                    tileDiv.dataset.justMoved = 'true';
-                                }
-                                const dropTouch = ev.changedTouches[0] || {clientX: 0, clientY: 0};
-                                let dropped = false;
-                                const dropX = dropTouch.clientX;
-                                const dropY = dropTouch.clientY;
-                                if (board.tiles.length === 0) {
-                                    const tableRect = tableDiv.getBoundingClientRect();
-                                    if (dropX > tableRect.left && dropX < tableRect.right && dropY > tableRect.top && dropY < tableRect.bottom) {
+                            }
+                            if (rightPlaceholder) {
+                                const rightRect = rightPlaceholder.getBoundingClientRect();
+                                if (dropX > rightRect.left && dropX < rightRect.right && dropY > rightRect.top && dropY < rightRect.bottom) {
+                                    if (canPlayOnEnd(draggedTile, board.rightEnd.value)) {
                                         playTile(gameState, draggedTile, 'right');
                                         dropped = true;
                                     }
-                                } else {
-                                    if (leftPlaceholder) {
-                                        const leftRect = leftPlaceholder.getBoundingClientRect();
-                                        if (dropX > leftRect.left && dropX < leftRect.right && dropY > leftRect.top && dropY < leftRect.bottom) {
-                                            if (canPlayOnEnd(draggedTile, board.leftEnd.value)) {
-                                                playTile(gameState, draggedTile, 'left');
-                                                dropped = true;
-                                            }
-                                        }
-                                    }
-                                    if (rightPlaceholder) {
-                                        const rightRect = rightPlaceholder.getBoundingClientRect();
-                                        if (dropX > rightRect.left && dropX < rightRect.right && dropY > rightRect.top && dropY < rightRect.bottom) {
-                                            if (canPlayOnEnd(draggedTile, board.rightEnd.value)) {
-                                                playTile(gameState, draggedTile, 'right');
-                                                dropped = true;
-                                            }
-                                        }
-                                    }
                                 }
-                                draggedTile = null;
-                            };
-                            document.addEventListener('touchmove', onTouchMove, {passive: false});
-                            document.addEventListener('touchend', onTouchEnd, {passive: true});
-                        }, { passive: true });
-                    }
-                    
-                    // Click for rotate/swap and buttons
-                    tileDiv.onclick = (e) => {
-                        initAudioContext();
-                        canPlaySound = true;
-                        e.stopPropagation();
-                        if (tileDiv.dataset.justMoved === 'true') {
-                            delete tileDiv.dataset.justMoved;
-                            return;
+                            }
                         }
-                        handleTileClick(gameState, tileIdx, playButtons);
+                        draggedTile = null;
                     };
-                    
-                    // Add selected class if applicable
-                    if (selectedIndex === tileIdx) {
-                        tileDiv.classList.add('selected');
-                    }
-                }
+                    document.addEventListener('touchmove', onTouchMove, {passive: false});
+                    document.addEventListener('touchend', onTouchEnd, {passive: false});
+                });
             }
             
-            tilesContainer.appendChild(tileDiv);
-        });
-        
-        if (index === 2) { // p3 north, score at bottom
-            hand.appendChild(tilesContainer);
-            hand.appendChild(scoreDiv);
-        } else if (index === 0) { // p1 south, score at top
-            hand.appendChild(scoreDiv);
-            hand.appendChild(tilesContainer);
-        } else {
-            // p2 east, p4 west: score beside tiles
-            hand.appendChild(scoreDiv);
-            hand.appendChild(tilesContainer);
+            tileDiv.onclick = (e) => { initAudioContext(); canPlaySound = true; e.stopPropagation(); if (tileDiv.dataset.justMoved === 'true') { delete tileDiv.dataset.justMoved; return; } handleTileClick(gameState, tileIdx, playButtons); };
+            if (selectedIndex === tileIdx) tileDiv.classList.add('selected');
         }
+    }
+    tilesContainer.appendChild(tileDiv);
+});
+        if (index === 2) { hand.appendChild(tilesContainer); hand.appendChild(scoreDiv); } 
+        else if (index === 0) { hand.appendChild(scoreDiv); hand.appendChild(tilesContainer); } 
+        else { hand.appendChild(scoreDiv); hand.appendChild(tilesContainer); }
         
         if (playButtons) {
             hand.appendChild(playButtons);
-            // Update buttons if selected
-            if (selectedIndex !== -1) {
-                const hand = players[0];
-                const selectedTileData = hand[selectedIndex];
+            if (currentPlayer === 0 && selectedIndex !== -1) {
+                const selectedTileData = players[0][selectedIndex];
                 const leftBtn = playButtons.querySelector('.play-left');
                 const rightBtn = playButtons.querySelector('.play-right');
                 leftBtn.style.display = 'none';
                 rightBtn.style.display = 'none';
 
                 if (board.tiles.length === 0) {
-                    rightBtn.style.display = 'inline-block';
-                    rightBtn.textContent = `Play First`;
-                    rightBtn.onclick = () => {
-                        const currentSelected = players[0][gameState.selectedIndex];
-                        playTile(gameState, currentSelected, 'right');
-                    };
+                    if (isThisFirstGame) {
+                        const doubles = players[0].filter(t => isDouble(t));
+                        if (doubles.length > 0) {
+                            if (highestDoubleInHand ? (selectedTileData.top === highestDoubleInHand.top && selectedTileData.bottom === highestDoubleInHand.bottom) : true) {
+                                rightBtn.style.display = 'inline-block';
+                                rightBtn.textContent = `Play First`;
+                                rightBtn.onclick = () => { const currentSelected = players[0][gameState.selectedIndex]; playTile(gameState, currentSelected, 'right'); };
+                            }
+                        } else {
+                            rightBtn.style.display = 'inline-block';
+                            rightBtn.textContent = `Play First`;
+                            rightBtn.onclick = () => { const currentSelected = players[0][gameState.selectedIndex]; playTile(gameState, currentSelected, 'right'); };
+                        }
+                    } else {
+                        rightBtn.style.display = 'inline-block';
+                        rightBtn.textContent = `Play First`;
+                        rightBtn.onclick = () => { const currentSelected = players[0][gameState.selectedIndex]; playTile(gameState, currentSelected, 'right'); };
+                    }
                 } else {
                     const leftEnd = board.leftEnd.value;
                     const rightEnd = board.rightEnd.value;
-
-                    if (selectedTileData.top === leftEnd || selectedTileData.bottom === leftEnd) {
+                    if (canPlayOnEnd(selectedTileData, leftEnd)) {
                         leftBtn.style.display = 'inline-block';
                         leftBtn.textContent = `Play Left (${leftEnd})`;
-                        leftBtn.onclick = () => {
-                            const currentSelected = players[0][gameState.selectedIndex];
-                            playTile(gameState, currentSelected, 'left');
-                        };
+                        leftBtn.onclick = () => { const currentSelected = players[0][gameState.selectedIndex]; playTile(gameState, currentSelected, 'left'); };
                     }
-
-                    if (selectedTileData.top === rightEnd || selectedTileData.bottom === rightEnd) {
+                    if (canPlayOnEnd(selectedTileData, rightEnd)) {
                         rightBtn.style.display = 'inline-block';
                         rightBtn.textContent = `Play Right (${rightEnd})`;
-                        rightBtn.onclick = () => {
-                            const currentSelected = players[0][gameState.selectedIndex];
-                            playTile(gameState, currentSelected, 'right');
-                        };
+                        rightBtn.onclick = () => { const currentSelected = players[0][gameState.selectedIndex]; playTile(gameState, currentSelected, 'right'); };
                     }
                 }
             }
