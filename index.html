@@ -340,9 +340,24 @@
     margin-left: 0;           /* ← ADDED no margin for first coin */
 }
 .coins-container.yellow .coin { filter: none; }
-.coins-container.violet .coin { filter: brightness(0) saturate(100%) invert(69%) sepia(23%) saturate(1988%) hue-rotate(248deg) brightness(104%) contrast(87%); }
-.coins-container.blue .coin { filter: brightness(0) saturate(100%) invert(9%) sepia(97%) saturate(7178%) hue-rotate(248deg) brightness(94%) contrast(143%); }
-.coins-container.red .coin { filter: brightness(0) saturate(100%) invert(35%) sepia(71%) saturate(6921%) hue-rotate(350deg) brightness(88%) contrast(133%); }
+.coins-container.violet .coin {
+  filter: brightness(0) saturate(100%) invert(69%) sepia(23%) saturate(1988%) hue-rotate(248deg) brightness(104%) contrast(87%);
+}
+
+.coins-container.orange .coin {
+  filter: brightness(0) saturate(100%) invert(52%) sepia(83%) saturate(5120%) hue-rotate(6deg) brightness(101%) contrast(97%);
+  /* warm, vivid orange */
+}
+
+.coins-container.red .coin {
+  filter: brightness(0) saturate(100%) invert(35%) sepia(71%) saturate(6921%) hue-rotate(350deg) brightness(88%) contrast(133%);
+}
+
+.coins-container.silver .coin {
+  filter: brightness(0) saturate(100%) invert(88%) sepia(3%) saturate(0%) hue-rotate(193deg) brightness(95%) contrast(90%);
+  /* metallic silver tone */
+}
+
         .play-buttons {
             margin-top: 0px;
             display: flex;
@@ -439,7 +454,7 @@
         <option value="500000">500000</option>
         <option value="1000000">1000000</option>
     </select>
-    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.2.4</div>
+    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.2.5</div>
 
 <script>
 let audioContext = null;
@@ -1804,9 +1819,12 @@ let coinColorClass = 'yellow';
 if (scoreValue >= 1000000000) {
   coinColorClass = 'red';
 } else if (scoreValue >=500000000) {
-  coinColorClass = 'blue';
+  coinColorClass = 'orange';
 } else if (scoreValue >= 100000000) {
   coinColorClass = 'violet';
+}
+ else if (scoreValue <= -1) {
+  coinColorClass = 'silver';
 }
 scoreDiv.innerHTML = `<span class="score-arrow">${!gameOver && index === currentPlayer ? '➤' : ''}</span><span class="score-text">[P${getPlayerNumber(index)}]</span><div class="score-number"><div class="coins-container ${coinColorClass}">${coinsHtml}</div><span class="score-text" style="position: absolute; top: 50%; left: 50%;top: -1px; transform: translate(calc(-50% - 10px), calc(-50% + 3px)); z-index: 2; color: black;">${scoreText}</span></div>`;
 		
