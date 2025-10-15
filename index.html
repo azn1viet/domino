@@ -293,6 +293,7 @@
             font-size: 14px;
             font-weight: bold;
             color: #fff;
+			left:-50px;
             margin: 3px 0;
             z-index: 101;
             text-shadow: 0 0 5px #fff;
@@ -311,13 +312,12 @@
         .score-text {
             white-space: nowrap;
 			margin-left: 10px;
-			margin-bottom: 12px;
 			color: #0f0;
         }
         .score-number {
             position: relative;
             display: inline-block;
-            margin-left: 50px;
+            margin-left: 50px;	
         }
 
 .coins-container {
@@ -1796,7 +1796,7 @@ const scoreText = scoreValue < 0 ? '-$' + Math.abs(scoreValue) : '$' + scoreValu
 const scoreLength = scoreText.length;
 const numCoins = Math.max(3, Math.ceil(scoreLength / 2)) ;
 const coinsHtml = '<span class="coin">🪙</span>'.repeat(numCoins);
-scoreDiv.innerHTML = `<span class="score-arrow">${!gameOver && index === currentPlayer ? '➤' : ''}</span><span class="score-text">[P${getPlayerNumber(index)}]</span><div class="score-number"><div class="coins-container">${coinsHtml}</div><span class="score-text" style="position: absolute; top: 50%; left: 50%; transform: translate(calc(-50% - 10px), calc(-50% + 3px)); z-index: 2; color: black;">${scoreText}</span></div>`;
+scoreDiv.innerHTML = `<span class="score-arrow">${!gameOver && index === currentPlayer ? '➤' : ''}</span><span class="score-text">[P${getPlayerNumber(index)}]</span><div class="score-number"><div class="coins-container">${coinsHtml}</div><span class="score-text" style="position: absolute; top: 50%; left: 50%;top: -1px; transform: translate(calc(-50% - 10px), calc(-50% + 3px)); z-index: 2; color: black;">${scoreText}</span></div>`;
 		
         const tilesContainer = document.createElement('div');
         tilesContainer.className = 'tiles-container';
