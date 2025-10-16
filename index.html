@@ -19,29 +19,37 @@
             background-color: #444;
             position: fixed;
             overflow: hidden;
+			  font-family: 'Poppins', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-weight: 400;
         }
-        #game-container {
-            position: absolute;
-            top: 113px;
-            left: 50px;
-            right: 50px;
-            bottom: 113px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        }
-#table {
-    width: 80%;
-    height: 50%;
-    position: fixed; /* stays centered even when scrolling */
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    border-radius: 10px;
-    min-width: 320px;
-    min-height: 320px;
+#game-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 80%;
+  height: 80%;
+  overflow: visible;
 }
+
+/* #table centered independently in viewport */
+#table {
+  width: 80%;
+  height: 80%;
+  position: fixed; /* keeps it centered on screen */
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 10px;
+  min-width: 320px;
+  min-height: 320px;
+  z-index: 5;
+}
+
 
         .player-hand {
             position: fixed;
@@ -345,7 +353,7 @@
 }
 
 .coins-container.orange .coin {
-  filter: brightness(0) saturate(100%) invert(52%) sepia(83%) saturate(5120%) hue-rotate(6deg) brightness(101%) contrast(97%);
+  filter: brightness(0) saturate(50%) invert(52%) sepia(50%) saturate(1120%) hue-rotate(6deg) brightness(50%) contrast(97%);
   /* warm, vivid orange */
 }
 
@@ -469,7 +477,21 @@
             font-size: 14px;
             margin-left: 5px;
         }
-	
+	/* Close button absolutely inside the menu */
+.close-btn {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  cursor: pointer;
+  color: #0f0;
+  font-size: 16px;
+  font-weight: bold;
+  transition: 0.2s ease;
+}
+.close-btn:hover {
+  color: #fff;
+  transform: scale(1.2);
+}
     </style>
 </head>
 <body>
@@ -486,6 +508,7 @@
  <button id="options-button">Options</button>
 
 <div id="options-menu">
+  <span id="close-options" class="close-btn">&times;</span>
   <label>Tile Mode:
     <select id="tileMode">
       <option value="Open">Open</option>
@@ -527,9 +550,12 @@
         <option value="500000">500000</option>
         <option value="1000000">1000000</option>
     </select>
-    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.2.7</div>
+    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.3.0</div>
 
 <script>
+document.getElementById('close-options').addEventListener('click', () => {
+  document.getElementById('options-menu').style.display = 'none';
+});
 let audioContext = null;
 let canPlaySound = true; // Changed to true to match Sound: On default
 let soundLocked = false; // new flag to prevent overwriting by other code
@@ -1039,7 +1065,7 @@ function playAI(gameState) {
 
 function calculatePlacement(board, end, tableRect, tile) {
     const { V_W, V_H, H_W, H_H, FULL, OFFSET } = getTileSizes();
-    const MARGIN = 0; //35; was decrease the space left and right for larger turn area, smaller screen benefit
+    const MARGIN = 0; 
 
     let e = board[end === 'left' ? 'leftEnd' : 'rightEnd'];
     let isLeftChain = end === 'left';
@@ -1052,7 +1078,18 @@ function calculatePlacement(board, end, tableRect, tile) {
     // New: For doubles, prioritize vertical
     let tryVerticalFirst = isDoubleTile;
 
-    // Try vertical first if double
+    // --- FIXED #1: only trigger vertical for doubles if near the edge ---
+    if (isDoubleTile) {
+        const nearLeftEdge = e.x - FULL * 1.5 < MARGIN + FULL * 2;
+        const nearRightEdge = e.x + FULL * 2.5 > tableRect.width - (MARGIN + FULL * 2);
+        if ((isLeftChain && nearLeftEdge) || (!isLeftChain && nearRightEdge)) {
+            tryVerticalFirst = true;
+        } else {
+            tryVerticalFirst = false; // stay horizontal if enough space
+        }
+    }
+
+    // Try vertical first if double & near edge
     if (tryVerticalFirst) {
         if (turnDir === 'up') {
             p.x = e.x - OFFSET;
@@ -1078,18 +1115,16 @@ function calculatePlacement(board, end, tableRect, tile) {
                         v_eff_y < MARGIN || v_eff_y + p.height > tableRect.height - MARGIN);
 
         if (!p.boundCheck) {
-            // Vertical fits, use it
             let newHdir = hdir === 'left' ? 'right' : 'left';
             p.newHdir = newHdir;
             p.turnDir = turnDir;
             return p;
         } else {
-            // Vertical doesn't fit, try horizontal and turn immediately
-            turnDir = isLeftChain ? 'up' : 'down'; // Force turn
+            turnDir = isLeftChain ? 'up' : 'down';
         }
     }
 
-    // Fallback/Try horizontal (or after vertical fail)
+    // Fallback/Try horizontal
     if (hdir === 'left') {
         p.x = e.x - (FULL + OFFSET);
         p.y = e.y - OFFSET;
@@ -1098,7 +1133,7 @@ function calculatePlacement(board, end, tableRect, tile) {
         p.height = H_H;
         p.nextEndX = p.x + OFFSET;
         p.nextEndY = p.y + OFFSET;
-    } else { // 'right'
+    } else {
         p.x = e.x + OFFSET;
         p.y = e.y - OFFSET;
         p.isHorizontal = true;
@@ -1116,7 +1151,7 @@ function calculatePlacement(board, end, tableRect, tile) {
     if (!p.boundCheck) {
         return p;
     } else {
-        // Turn vertical (or for double after fail)
+        // --- FIXED #2: non-doubles also turn vertical when actually out of bounds ---
         if (turnDir === 'up') {
             p.x = e.x - OFFSET;
             p.y = e.y - (FULL + OFFSET);
@@ -1125,7 +1160,7 @@ function calculatePlacement(board, end, tableRect, tile) {
             p.height = V_H;
             p.nextEndX = p.x + OFFSET;
             p.nextEndY = p.y + OFFSET;
-        } else { // down
+        } else {
             p.x = e.x - OFFSET;
             p.y = e.y + OFFSET;
             p.isHorizontal = false;
@@ -1141,30 +1176,25 @@ function calculatePlacement(board, end, tableRect, tile) {
                        v_eff_y < MARGIN || v_eff_y + p.height > tableRect.height - MARGIN);
 
         if (v_bound) {
-            let shiftX = 0;
-            let shiftY = 0;
-            if (v_eff_x < MARGIN) {
-                shiftX = MARGIN - v_eff_x;
-            } else if (v_eff_x + p.width > tableRect.width - MARGIN) {
+            let shiftX = 0, shiftY = 0;
+            if (v_eff_x < MARGIN) shiftX = MARGIN - v_eff_x;
+            else if (v_eff_x + p.width > tableRect.width - MARGIN)
                 shiftX = (tableRect.width - MARGIN) - (v_eff_x + p.width);
-            }
-            if (v_eff_y < MARGIN) {
-                shiftY = MARGIN - v_eff_y;
-            } else if (v_eff_y + p.height > tableRect.height - MARGIN) {
+            if (v_eff_y < MARGIN) shiftY = MARGIN - v_eff_y;
+            else if (v_eff_y + p.height > tableRect.height - MARGIN)
                 shiftY = (tableRect.height - MARGIN) - (v_eff_y + p.height);
-            }
             board.offsetX += shiftX;
             board.offsetY += shiftY;
         }
 
-        // Reverse hdir for next
         let newHdir = hdir === 'left' ? 'right' : 'left';
         p.newHdir = newHdir;
         p.turnDir = turnDir;
-
         return p;
     }
 }
+
+
 
 function rotateTile(tile) {
     return { top: tile.bottom, bottom: tile.top };
@@ -2213,6 +2243,48 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 }); 
+function centerTilesOnResize() {
+  const table = document.getElementById('table');
+  const tiles = table.querySelectorAll('.table-tile');
+  if (!tiles.length) return;
+
+  // Get current table center
+  const tableRect = table.getBoundingClientRect();
+  const centerX = tableRect.width / 2;
+  const centerY = tableRect.height / 2;
+
+  // Find the bounding box of all tiles
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  tiles.forEach(tile => {
+    const rect = tile.getBoundingClientRect();
+    const tableBox = table.getBoundingClientRect();
+    const left = rect.left - tableBox.left;
+    const top = rect.top - tableBox.top;
+    minX = Math.min(minX, left);
+    minY = Math.min(minY, top);
+    maxX = Math.max(maxX, left + rect.width);
+    maxY = Math.max(maxY, top + rect.height);
+  });
+
+  // Calculate tiles' visual center
+  const tilesCenterX = (minX + maxX) / 2;
+  const tilesCenterY = (minY + maxY) / 2;
+
+  // Compute offset to move them to table center
+  const offsetX = centerX - tilesCenterX;
+  const offsetY = centerY - tilesCenterY;
+
+  // Apply offset
+  tiles.forEach(tile => {
+    const left = parseFloat(tile.style.left || 0);
+    const top = parseFloat(tile.style.top || 0);
+    tile.style.left = `${left + offsetX}px`;
+    tile.style.top = `${top + offsetY}px`;
+  });
+}
+
+// Call it on window resize
+window.addEventListener('resize', centerTilesOnResize);
 
 </script>
 </body>
