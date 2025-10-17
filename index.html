@@ -537,7 +537,7 @@
         <option value="500000">500000</option>
         <option value="1000000">1000000</option>
     </select>
-    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.3.0</div>
+    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.3.1</div>
 
 <script>
 document.getElementById('close-options').addEventListener('click', () => {
@@ -1049,7 +1049,7 @@ function playAI(gameState) {
          }
     }
 }
-
+/*
 function calculatePlacement(board, end, tableRect, tile) {
     const { V_W, V_H, H_W, H_H, FULL, OFFSET } = getTileSizes();
     const MARGIN = 0; 
@@ -1179,8 +1179,144 @@ function calculatePlacement(board, end, tableRect, tile) {
         p.turnDir = turnDir;
         return p;
     }
-}
+}*/
 
+function calculatePlacement(board, end, tableRect, tile) {
+    const { V_W, V_H, H_W, H_H, FULL, OFFSET } = getTileSizes();
+    const MARGIN = 0;
+
+    let e = board[end === 'left' ? 'leftEnd' : 'rightEnd'];
+    let isLeftChain = end === 'left';
+    let turnDir = isLeftChain ? 'up' : 'down';
+
+    let p = {};
+    let hdir = e.dir; // 'left' or 'right'
+    let isDoubleTile = isDouble(tile);
+    let tryVerticalFirst = false;
+    // Check if the next placement should be forced horizontal due to previous edge proximity
+    if (board.forceHorizontalNext) {
+        tryVerticalFirst = false;
+        board.forceHorizontalNext = false;
+    } else {
+        // Default to horizontal placement
+        let tryVerticalFirst = false;
+
+        // Only consider placing a double vertically if the chain is currently horizontal
+        if (isDoubleTile && !e.isVertical) {
+            const nearLeftEdge = e.x - FULL * 1.5 < MARGIN + FULL * 2;
+            const nearRightEdge = e.x + FULL * 2.5 > tableRect.width - (MARGIN + FULL * 2);
+            if ((isLeftChain && nearLeftEdge) || (!isLeftChain && nearRightEdge)) {
+                tryVerticalFirst = true;
+            }
+        }
+    }
+
+    // Try vertical first if double & near edge & previous was not vertical
+    if (tryVerticalFirst) {
+        if (turnDir === 'up') {
+            p.x = e.x - OFFSET;
+            p.y = e.y - (FULL + OFFSET);
+            p.nextEndX = p.x + OFFSET;
+            p.nextEndY = p.y + OFFSET;
+        } else {
+            p.x = e.x - OFFSET;
+            p.y = e.y + OFFSET;
+            p.nextEndX = p.x + OFFSET;
+            p.nextEndY = p.y + FULL - OFFSET;
+        }
+        p.isHorizontal = false;
+        p.isVertical = true;
+        p.width = V_W;
+        p.height = V_H;
+
+        const v_eff_x = p.x + board.offsetX;
+        const v_eff_y = p.y + board.offsetY;
+        p.boundCheck = (v_eff_x < MARGIN || v_eff_x + p.width > tableRect.width - MARGIN ||
+                        v_eff_y < MARGIN || v_eff_y + p.height > tableRect.height - MARGIN);
+
+        if (!p.boundCheck) {
+            let newHdir = hdir === 'left' ? 'right' : 'left';
+            p.newHdir = newHdir;
+            p.turnDir = turnDir;
+            // Set flag to force horizontal next time if near edge
+            const nearLeftEdge = v_eff_x - FULL * 1.5 < MARGIN + FULL * 2;
+            const nearRightEdge = v_eff_x + FULL * 2.5 > tableRect.width - (MARGIN + FULL * 2);
+            if (nearLeftEdge || nearRightEdge) {
+                board.forceHorizontalNext = true;
+            }
+            return p;
+        } else {
+            turnDir = isLeftChain ? 'up' : 'down';
+        }
+    }
+
+    // Fallback/Try horizontal
+    if (hdir === 'left') {
+        p.x = e.x - (FULL + OFFSET);
+        p.nextEndX = p.x + OFFSET;
+    } else {
+        p.x = e.x + OFFSET;
+        p.nextEndX = p.x + FULL - OFFSET;
+    }
+    p.y = e.y - OFFSET;
+    p.isHorizontal = true;
+    p.isVertical = false;
+    p.width = H_W;
+    p.height = H_H;
+    p.nextEndY = p.y + OFFSET;
+
+    const eff_x = p.x + board.offsetX;
+    const eff_y = p.y + board.offsetY;
+    p.boundCheck = (eff_x < MARGIN || eff_x + p.width > tableRect.width - MARGIN ||
+                    eff_y < MARGIN || eff_y + p.height > tableRect.height - MARGIN);
+
+    if (!p.boundCheck) {
+        return p;
+    } else {
+        // Turn vertical when horizontal is out of bounds
+        if (turnDir === 'up') {
+            p.y = e.y - (FULL + OFFSET);
+            p.nextEndY = p.y + OFFSET;
+        } else {
+            p.y = e.y + OFFSET;
+            p.nextEndY = p.y + FULL - OFFSET;
+        }
+        p.x = e.x - OFFSET;
+        p.isHorizontal = false;
+        p.isVertical = true;
+        p.width = V_W;
+        p.height = V_H;
+        p.nextEndX = p.x + OFFSET;
+
+        const v_eff_x = p.x + board.offsetX;
+        const v_eff_y = p.y + board.offsetY;
+        let v_bound = (v_eff_x < MARGIN || v_eff_x + p.width > tableRect.width - MARGIN ||
+                       v_eff_y < MARGIN || v_eff_y + p.height > tableRect.height - MARGIN);
+
+        if (v_bound) {
+            let shiftX = 0, shiftY = 0;
+            if (v_eff_x < MARGIN) shiftX = MARGIN - v_eff_x;
+            else if (v_eff_x + p.width > tableRect.width - MARGIN)
+                shiftX = (tableRect.width - MARGIN) - (v_eff_x + p.width);
+            if (v_eff_y < MARGIN) shiftY = MARGIN - v_eff_y;
+            else if (v_eff_y + p.height > tableRect.height - MARGIN)
+                shiftY = (tableRect.height - MARGIN) - (v_eff_y + p.height);
+            board.offsetX += shiftX;
+            board.offsetY += shiftY;
+        }
+
+        let newHdir = hdir === 'left' ? 'right' : 'left';
+        p.newHdir = newHdir;
+        p.turnDir = turnDir;
+        // Set flag to force horizontal next time if near edge
+        const nearLeftEdge = v_eff_x - FULL * 1.5 < MARGIN + FULL * 2;
+        const nearRightEdge = v_eff_x + FULL * 2.5 > tableRect.width - (MARGIN + FULL * 2);
+        if (nearLeftEdge || nearRightEdge) {
+            board.forceHorizontalNext = true;
+        }
+        return p;
+    }
+}
 
 
 function rotateTile(tile) {
