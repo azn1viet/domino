@@ -708,7 +708,7 @@ document.addEventListener('click', () => {
         <option value="500000">500000</option>
         <option value="1000000">1000000</option>
     </select>
-    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.4.5</div>
+    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.4.6</div>
 
 <script>
 document.getElementById('close-options').addEventListener('click', () => {
@@ -1606,11 +1606,14 @@ function updateScoresForWin(winner, gameState) {
     }
     scores[winner] += pot;
     nextGameStarter = winner;
-    let message = `Player ${getPlayerNumber(winner)} wins ${abbreviate(pot)}\n\n`;
+    let message = `Player ${getPlayerNumber(winner)} wins ${abbreviate(pot)}
+
+`;
     for (let i = 0; i < numPlayers; i++) {
         if (i !== winner) {
             let pay = values[i] * bet;
-            message += `Player ${getPlayerNumber(i)} pays ${abbreviate(pay)}\n`;
+            message += `Player ${getPlayerNumber(i)} pays ${abbreviate(pay)}
+`;
         }
     }
     setTimeout(() => alert(message), 100);
@@ -1627,13 +1630,17 @@ let payAmount = 2 * othersTotal * bet;
         // blocker wins, assistant pays to blocker
         scores[assistant] -= payAmount;
         scores[blocker] += payAmount;
-        message = `Player ${getPlayerNumber(blocker)} wins block assisted by Player ${getPlayerNumber(assistant)}.\n\n`;
+        message = `Player ${getPlayerNumber(blocker)} wins block assisted by Player ${getPlayerNumber(assistant)}.
+
+`;
         message += `Player ${getPlayerNumber(assistant)} pays ${abbreviate(payAmount)} to Player ${getPlayerNumber(blocker)}`;
     } else {
         // blocker loses, blocker pays to assistant
         scores[blocker] -= payAmount;
         scores[assistant] += payAmount;
-        message = `Player ${getPlayerNumber(blocker)} loses block assisted by Player ${getPlayerNumber(assistant)}.\n\n`;
+        message = `Player ${getPlayerNumber(blocker)} loses block assisted by Player ${getPlayerNumber(assistant)}.
+
+`;
         message += `Player ${getPlayerNumber(blocker)} pays ${abbreviate(payAmount)} to Player ${getPlayerNumber(assistant)}`;
     }
     nextGameStarter = blocker;
@@ -1656,12 +1663,17 @@ function updateScoresForIntentionalBlockNoAssist(blocker, gameState) {
                 scores[blocker] += pay;
             }
         }
-        message = `Player ${getPlayerNumber(blocker)} wins block!\n\n`;
-        message += `Player ${getPlayerNumber(blocker)} receives ${abbreviate(totalTransfer)}\n\n`;
+        message = `Player ${getPlayerNumber(blocker)} wins block!
+
+`;
+        message += `Player ${getPlayerNumber(blocker)} receives ${abbreviate(totalTransfer)}
+
+`;
         for (let i = 0; i < numPlayers; i++) {
             if (i !== blocker) {
                 let pay = 2 * values[i] * bet;
-                message += `Player ${getPlayerNumber(i)} pays ${abbreviate(pay)}\n`;
+                message += `Player ${getPlayerNumber(i)} pays ${abbreviate(pay)}
+`;
             }
         }
     } else {
@@ -1673,12 +1685,17 @@ function updateScoresForIntentionalBlockNoAssist(blocker, gameState) {
                 scores[i] += pay;
             }
         }
-        message = `Player ${getPlayerNumber(blocker)} loses block!\n\n`;
-        message += `Player ${getPlayerNumber(blocker)} pays ${abbreviate(totalTransfer)} total\n\n`;
+        message = `Player ${getPlayerNumber(blocker)} loses block!
+
+`;
+        message += `Player ${getPlayerNumber(blocker)} pays ${abbreviate(totalTransfer)} total
+
+`;
         for (let i = 0; i < numPlayers; i++) {
             if (i !== blocker) {
                 let pay = 2 * values[i] * bet;
-                message += `Player ${getPlayerNumber(i)} receives ${abbreviate(pay)}\n`;
+                message += `Player ${getPlayerNumber(i)} receives ${abbreviate(pay)}
+`;
             }
         }
     }
@@ -1704,7 +1721,10 @@ function updateScoresForForceBlock(gameState) {
     let message;
     if (winners.length === numPlayers) {
         // All tie
-        message = `Force block! All players tie.\n\nNo payout.\nPlayer ${getPlayerNumber(nextGameStarter)} starts next game.`;
+        message = `Force block! All players tie.
+
+No payout.
+Player ${getPlayerNumber(nextGameStarter)} starts next game.`;
         nextGameStarter = playerOrder[(playerOrder.indexOf(lastValidPlayer) + 1) % numPlayers];
     } else {
         let total_pot = 0;
@@ -1719,19 +1739,29 @@ function updateScoresForForceBlock(gameState) {
         });
         if (winners.length === 1) {
             nextGameStarter = winners[0];
-            message = `Force block! Player ${getPlayerNumber(nextGameStarter)} has lowest hand.\n\n`;
-            message += `Player ${getPlayerNumber(nextGameStarter)} wins ${abbreviate(total_pot)}\n\n`;
+            message = `Force block! Player ${getPlayerNumber(nextGameStarter)} has lowest hand.
+
+`;
+            message += `Player ${getPlayerNumber(nextGameStarter)} wins ${abbreviate(total_pot)}
+
+`;
             losers.forEach(l => {
                 let pay = values[l] * bet;
-                message += `Player ${getPlayerNumber(l)} pays ${abbreviate(pay)}\n`;
+                message += `Player ${getPlayerNumber(l)} pays ${abbreviate(pay)}
+`;
             });
         } else {
             nextGameStarter = playerOrder[(playerOrder.indexOf(lastValidPlayer) + 1) % numPlayers];
-            message = `Force block! Tie between: ${winners.map(w => `Player ${getPlayerNumber(w)}`).join(', ')}\n\n`;
-            message += `Winners share ${abbreviate(total_pot)} (${abbreviate(share)} each)\n\n`;
+            message = `Force block! Tie between: ${winners.map(w => `Player ${getPlayerNumber(w)}`).join(', ')}
+
+`;
+            message += `Winners share ${abbreviate(total_pot)} (${abbreviate(share)} each)
+
+`;
             losers.forEach(l => {
                 let pay = values[l] * bet;
-                message += `Player ${getPlayerNumber(l)} pays ${abbreviate(pay)}\n`;
+                message += `Player ${getPlayerNumber(l)} pays ${abbreviate(pay)}
+`;
             });
         }
     }
@@ -1873,7 +1903,50 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
             // STEP 1: Check for SELF-ASSISTED block (same player played consecutively)
             if (playerWhoPlayedBefore === lastValidPlayer) {
                 // Player played multiple times in a row (others skipped)
-                // Check if they had alternatives on their EARLIER move
+                
+                // NEW: Check if someone SET UP this self-assist sequence
+                if (roundHistory.length >= 3) {
+                    const thirdLastMove = roundHistory[roundHistory.length - 3];
+                    const playerBeforeSelfAssist = thirdLastMove.player;
+                    const leftNeighbor = getPreviousPlayer(lastValidPlayer);
+                    
+                    // Only check if it was the immediate left neighbor
+                    if (playerBeforeSelfAssist === leftNeighbor) {
+                        const setupBoardBefore = thirdLastMove.boardBefore;
+                        
+                        if (setupBoardBefore && setupBoardBefore.leftEnd) {
+                            const setupHandBefore = [...players[leftNeighbor], thirdLastMove.playedTile];
+                            const playersAtSetup = JSON.parse(JSON.stringify(players));
+                            
+                            // Add back tiles from last three moves
+                            for (let i = roundHistory.length - 3; i < roundHistory.length; i++) {
+                                const move = roundHistory[i];
+                                playersAtSetup[move.player].push({...move.playedTile});
+                            }
+                            
+                            const setupHadAlt = hasPreventingAlternative(
+                                setupHandBefore,
+                                setupBoardBefore,
+                                playersAtSetup,
+                                leftNeighbor,
+                                0
+                            );
+                            
+                            if (setupHadAlt) {
+                                // Left neighbor SET UP the self-assist!
+                                // ASSISTED SELF-BLOCK
+                                assistant = leftNeighbor;
+                                updateScoresForIntentionalBlockWithAssist(blocker, assistant, gameState);
+                                renderGame(gameState);
+                                showNewGameButton();
+                                return;
+                            }
+                        }
+                    }
+                }
+                
+                // No setup assistant found - pure self-assist
+                // Check if the earlier self-move had alternatives
                 const earlierBoardBefore = secondLastMove.boardBefore;
                 
                 if (earlierBoardBefore && earlierBoardBefore.leftEnd) {
@@ -1895,15 +1968,15 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
                     );
                     
                     if (earlierHadAlt) {
-                        // Player intentionally set up their own block
-                        // SELF-ASSISTED INTENTIONAL BLOCK = Solo Intentional Block
+                        // Pure self-assisted intentional block
                         updateScoresForIntentionalBlockNoAssist(blocker, gameState);
                         renderGame(gameState);
                         showNewGameButton();
                         return;
                     }
                 }
-                // If earlier move was forced, still treat as Solo Intentional Block
+                
+                // Earlier move was forced, still treat as solo
                 updateScoresForIntentionalBlockNoAssist(blocker, gameState);
                 renderGame(gameState);
                 showNewGameButton();
@@ -1914,7 +1987,6 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
             const leftNeighbor = getPreviousPlayer(lastValidPlayer);
             
             if (playerWhoPlayedBefore === leftNeighbor) {
-                // Left neighbor played immediately before blocker
                 const assistantBoardBefore = secondLastMove.boardBefore;
                 
                 if (assistantBoardBefore && assistantBoardBefore.leftEnd) {
@@ -1936,7 +2008,6 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
                     );
                     
                     if (assistantHadAlt) {
-                        // Left neighbor had alternatives and set up the block
                         // ASSISTANT FOUND!
                         assistant = leftNeighbor;
                         updateScoresForIntentionalBlockWithAssist(blocker, assistant, gameState);
@@ -1948,7 +2019,7 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
             }
         }
         
-        // No assistant found (neither self nor left neighbor)
+        // No assistant found
         updateScoresForIntentionalBlockNoAssist(blocker, gameState);
         renderGame(gameState);
         showNewGameButton();
@@ -1957,10 +2028,9 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
     
     // ============================================================================
     // SECONDARY CHECK: Last player was FORCED to block
-    // Now check who CAUSED the forced block
     // ============================================================================
     
-    // STEP 3: Check immediate previous player who actually played
+    // STEP 3: Check immediate previous player
     if (roundHistory.length >= 2) {
         const prevMove = roundHistory[roundHistory.length - 2];
         const prevPlayer = prevMove.player;
@@ -1970,7 +2040,6 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
             const prevHandBefore = [...players[prevPlayer], prevMove.playedTile];
             const playersAtPrev = JSON.parse(JSON.stringify(players));
             
-            // Add back tiles from last two moves
             for (let i = roundHistory.length - 2; i < roundHistory.length; i++) {
                 const move = roundHistory[i];
                 playersAtPrev[move.player].push({...move.playedTile});
@@ -1985,7 +2054,6 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
             );
             
             if (prevHadNonBlockingAlt) {
-                // Previous player had alternatives and caused a force block
                 blocker = prevPlayer;
                 updateScoresForIntentionalBlockNoAssist(blocker, gameState);
                 renderGame(gameState);
@@ -1995,7 +2063,7 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
         }
     }
     
-    // STEP 4: Check for remote blocker (2 moves back)
+    // STEP 4: Check remote blocker
     if (roundHistory.length >= 3) {
         const grandMove = roundHistory[roundHistory.length - 3];
         const grandPlayer = grandMove.player;
@@ -2005,7 +2073,6 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
             const grandHandBefore = [...players[grandPlayer], grandMove.playedTile];
             const playersAtGrand = JSON.parse(JSON.stringify(players));
             
-            // Add back tiles from last three moves
             for (let i = roundHistory.length - 3; i < roundHistory.length; i++) {
                 const move = roundHistory[i];
                 playersAtGrand[move.player].push({...move.playedTile});
@@ -2029,12 +2096,11 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
         }
     }
     
-    // STEP 5: No intentional blocker found - Force Block
+    // STEP 5: Force Block
     updateScoresForForceBlock(gameState);
     renderGame(gameState);
     showNewGameButton();
 }
-
 
 function getPlayerNumber(index) {
     return index + 1;

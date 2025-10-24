@@ -3,9 +3,9 @@
   "short_name": "Domino",
   "start_url": "index.html",
   "display": "standalone",
-  "background_color": "#111111",
+  "background_color": "#4444",
   "theme_color": "#222222",
-  "version": "1.4.2", 
+  "version": "1.4.6", 
   "icons": [
     {
       "src": "logo192x192.png",

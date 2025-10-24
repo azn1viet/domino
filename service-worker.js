@@ -1,7 +1,8 @@
-const CACHE_NAME = "domino-v1.4.0";
+const CACHE_NAME = "domino-1.4.6";
 const FILES_TO_CACHE = [
-  "logo192x192.png",
-  "logo512x512.png"
+  "./index.html",
+  "./logo192x192.png",
+  "./logo512x512.png"
 ];
 
 // --- INSTALL ---
