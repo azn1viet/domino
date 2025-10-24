@@ -1,8 +1,7 @@
-const CACHE_NAME = "domino-v2";
+const CACHE_NAME = "domino-v1.4.0";
 const FILES_TO_CACHE = [
-  "./manifest.json",
-  "./logo192x192.png",
-  "./logo512x512.png"
+  "logo192x192.png",
+  "logo512x512.png"
 ];
 
 // Install new service worker
