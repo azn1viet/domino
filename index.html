@@ -512,25 +512,41 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 <body>
-<!-- Temporary always-visible Install App button -->
-<button id="installAppBtn"
-  style="
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    background: #0f0;
-    color: #000;
-    border: none;
-    border-radius: 8px;
-    padding: 10px 16px;
-    font-size: 15px;
-    font-weight: bold;
-    cursor: pointer;
-    z-index: 9999;
-    box-shadow: 0 0 10px #0f08;
-  ">
-  📲 Install App
+<button id="installBtn" style="position:fixed;top:10px;right:10px;z-index:999;background:#0f0;color:#000;padding:8px 12px;border:none;border-radius:5px;display:none;">
+  Install App
 </button>
+<script>
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  document.getElementById('installBtn').style.display = 'block';
+});
+
+document.getElementById('installBtn').addEventListener('click', async () => {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      localStorage.setItem('pwaInstalled', 'true');
+    }
+    deferredPrompt = null;
+  }
+});
+
+window.addEventListener('appinstalled', () => {
+  localStorage.setItem('pwaInstalled', 'true');
+  document.getElementById('installBtn').style.display = 'none';
+});
+
+// Cleanup SW and cache if app was uninstalled
+if (!localStorage.getItem('pwaInstalled')) {
+  navigator.serviceWorker.getRegistrations().then(regs => {
+    regs.forEach(r => r.unregister());
+    caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
+  });
+}
+</script>
 
     <div id="game-container">
         <div id="table"></div>
@@ -587,7 +603,7 @@ if ('serviceWorker' in navigator) {
         <option value="500000">500000</option>
         <option value="1000000">1000000</option>
     </select>
-    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.3.8</div>
+    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.3.9</div>
 
 <script>
 document.getElementById('close-options').addEventListener('click', () => {
@@ -2368,76 +2384,6 @@ function centerTilesOnResize() {
 // Call it on window resize
 window.addEventListener('resize', centerTilesOnResize);
 
-</script>
-<script>
-(async () => {
-  const installBtn = document.getElementById('installAppBtn');
-  let deferredPrompt = null;
-
-  // Helper: cleanup stale SW and cache when reloading after uninstall
-  async function cleanAll() {
-    if ('serviceWorker' in navigator) {
-      const regs = await navigator.serviceWorker.getRegistrations();
-      for (const reg of regs) await reg.unregister();
-    }
-    if ('caches' in window) {
-      const keys = await caches.keys();
-      for (const key of keys) await caches.delete(key);
-    }
-    localStorage.removeItem('pwa_installed');
-  }
-
-  const isStandalone =
-    window.matchMedia('(display-mode: standalone)').matches ||
-    window.navigator.standalone === true;
-
-  // if not standalone, clean up
-  if (!isStandalone) await cleanAll();
-
-  // Register SW again
-  if ('serviceWorker' in navigator) {
-    try {
-      await navigator.serviceWorker.register('service-worker.js');
-      console.log('✅ SW registered');
-    } catch (err) {
-      console.error('❌ SW registration failed:', err);
-    }
-  }
-
-  // Handle beforeinstallprompt (Chrome, Edge)
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    console.log('📢 Install prompt available');
-  });
-
-  // Fallback: force button visible for iOS Safari (since it doesn’t fire beforeinstallprompt)
-  installBtn.style.display = 'block';
-
-  // Click handler
-  installBtn.addEventListener('click', async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      console.log('User install choice:', outcome);
-      if (outcome === 'accepted') {
-        localStorage.setItem('pwa_installed', 'yes');
-        installBtn.style.display = 'none';
-      }
-      deferredPrompt = null;
-    } else if (/iphone|ipad|ipod/i.test(navigator.userAgent)) {
-      alert('On iOS, tap the Share icon (↑) then “Add to Home Screen”.');
-    } else {
-      alert('If install doesn’t start, check if HTTPS + manifest.json are valid.');
-    }
-  });
-
-  window.addEventListener('appinstalled', () => {
-    console.log('✅ App installed!');
-    localStorage.setItem('pwa_installed', 'yes');
-    installBtn.style.display = 'none';
-  });
-})();
 </script>
 </body>
 </html>

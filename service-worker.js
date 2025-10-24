@@ -1,49 +1,40 @@
-const CACHE_NAME = "domino-v1";
+const CACHE_NAME = "domino-v2";
 const FILES_TO_CACHE = [
-  "./manifest.json",
-   "./logo.png",
-  "./logo192x192.png",
-  "./logo512x512.png"
+  "/manifest.json",
+  "/logo192x192.png",
+  "/logo512x512.png"
 ];
-// Install — cache static assets + latest index.html
+
+// Install new service worker
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll([...FILES_TO_CACHE, "./index.html"]))
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(FILES_TO_CACHE))
   );
   self.skipWaiting();
 });
 
-// Activate — remove old caches
+// Activate — clean old versions
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.map((key) => key !== CACHE_NAME && caches.delete(key)))
+      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
     )
   );
   self.clients.claim();
 });
 
-// Fetch handler
+// Fetch: network first for index.html, cache fallback
 self.addEventListener("fetch", (event) => {
-  const request = event.request;
-
-  // Always try network first for index.html, fallback to cache if offline
-  if (request.mode === "navigate" || request.url.endsWith("index.html")) {
+  const req = event.request;
+  if (req.mode === "navigate" || req.url.endsWith("index.html")) {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          // Save fresh version to cache
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put("./index.html", copy));
-          return response;
-        })
-        .catch(() => caches.match("./index.html")) // fallback if offline
+      fetch(req).then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE_NAME).then((c) => c.put("/", copy));
+        return res;
+      }).catch(() => caches.match("/index.html"))
     );
-    return;
+  } else {
+    event.respondWith(caches.match(req).then((res) => res || fetch(req)));
   }
-
-  // For other files: cache first, then network fallback
-  event.respondWith(
-    caches.match(request).then((response) => response || fetch(request))
-  );
 });
