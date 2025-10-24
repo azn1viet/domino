@@ -4,36 +4,45 @@ const FILES_TO_CACHE = [
   "logo512x512.png"
 ];
 
-// Install new service worker
+// --- INSTALL ---
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(FILES_TO_CACHE))
   );
+  // activate immediately after install
   self.skipWaiting();
 });
 
-// Activate — clean old versions
+// --- ACTIVATE ---
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    )
+    (async () => {
+      const cacheNames = await caches.keys();
+      await Promise.all(
+        cacheNames.map((name) => {
+          if (name !== CACHE_NAME) return caches.delete(name);
+        })
+      );
+      // ✅ Claim only after this worker becomes active
+      await self.clients.claim();
+    })()
   );
-  self.clients.claim();
 });
 
-// Fetch: network first for index.html, cache fallback
+// --- FETCH ---
 self.addEventListener("fetch", (event) => {
-  const req = event.request;
-  if (req.mode === "navigate" || req.url.endsWith("index.html")) {
+  const request = event.request;
+
+  // Always fetch a fresh index.html
+  if (request.mode === "navigate" || request.url.endsWith("index.html")) {
     event.respondWith(
-      fetch(req).then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE_NAME).then((c) => c.put("/", copy));
-        return res;
-      }).catch(() => caches.match("/index.html"))
+      fetch(request).catch(() => caches.match("./index.html"))
     );
-  } else {
-    event.respondWith(caches.match(req).then((res) => res || fetch(req)));
+    return;
   }
+
+  // Cache-first fallback for everything else
+  event.respondWith(
+    caches.match(request).then((response) => response || fetch(request))
+  );
 });
