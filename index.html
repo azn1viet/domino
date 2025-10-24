@@ -34,6 +34,44 @@
         * {
             box-sizing: border-box;
         }
+		button, select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  border: none;
+  outline: none;
+  background: #0f0;
+  color: black;
+  border-radius: 6px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 8px 15px;
+  cursor: pointer;
+  text-align: center;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  transition: background 0.2s, transform 0.1s;
+}
+
+button:hover, select:hover {
+  background: #0c0;
+  transform: scale(1.05);
+}
+
+button:active, select:active {
+  transform: scale(0.98);
+}
+select {
+  background-image: linear-gradient(45deg, transparent 50%, black 50%),
+                    linear-gradient(135deg, black 50%, transparent 50%);
+  background-position: calc(100% - 15px) calc(50% - 4px),
+                       calc(100% - 10px) calc(50% - 4px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 30px;
+}
+
+
         body {
             margin: 0;
             padding: 0;
@@ -44,6 +82,8 @@
             overflow: hidden;
       font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
   font-weight: 400;
+  -webkit-text-size-adjust: 100%;
+  touch-action: manipulation;
         }
 #game-container {
   position: absolute;
@@ -57,6 +97,7 @@
   width: 70%;
   height: 70%;
   overflow: visible;
+  pointer-events: none;
 }
 
 /* #table centered independently in viewport */
@@ -68,6 +109,7 @@
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 5;
+  pointer-events: none;
 }
 
 
@@ -456,11 +498,20 @@
             border: 1px solid #0f0;
             padding: 5px;
             font-size: 14px;
+			 cursor: pointer;
+  touch-action: manipulation; /* prevent delay or double-tap zoom */
+  user-select: none;
+  -webkit-tap-highlight-color: transparent; /* remove gray flash on iOS */
+  pointer-events: auto;
         }
         #options-button:hover {
             background: #0c0;
             transform: scale(1.05);
         }
+		#options-button:active {
+  transform: scale(0.97);
+  background: #0a0;
+}
         #options-menu {
             position: fixed;
             bottom: 50px;
@@ -473,28 +524,46 @@
             display: none;
             color: #add8e6;
             font-size: 14px;
+			pointer-events: auto;
         }
-        #options-menu label {
-            display: block;
-            margin: 5px 0;
-        }
-        #options-menu select {
-            background: #444;
-            color: #add8e6;
-            border: 1px solid #0f0;
-            border-radius: 3px;
-            padding: 2px;
-            font-size: 14px;
-            margin-left: 5px;
-        }
+       #options-menu select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-color: #333;        /* flat dark background */
+  color: #add8e6;                /* light blue text */
+  border: 1px solid #0f0;        /* simple 1px green border */
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  outline: none;
+  cursor: pointer;
+  width: auto;
+  background-image: none;        /* remove platform arrows */
+  box-shadow: none;              /* no shadow */
+}
+
+#options-menu select:focus {
+  border-color: #0c0;
+  outline: none;
+}
+
+#options-menu label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 6px 0;
+}
+
 	/* Close button absolutely inside the menu */
 .close-btn {
   position: absolute;
-  top: 4px;
-  right: 6px;
+  top: -4px;
+  right: 2px;
   cursor: pointer;
   color: #0f0;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: bold;
   transition: 0.2s ease;
 }
@@ -598,14 +667,14 @@ document.addEventListener('click', () => {
 
 <div id="options-menu">
   <span id="close-options" class="close-btn">&times;</span>
-  <label>Tile Mode:
+  <label>Tile Mode
     <select id="tileMode">
       <option value="Open">Open</option>
       <option value="Close" selected>Close</option>
     </select>
   </label>
 
-  <label>Background Color:
+  <label>Background Color
     <select id="backgroundColor">
       <option value="white">White</option>
       <option value="olive">Olive</option>
@@ -616,14 +685,14 @@ document.addEventListener('click', () => {
     </select>
   </label>
 
-  <label>Sound:
+  <label>Sound
     <select id="sound">
       <option value="On" selected>On</option>
       <option value="Off">Off</option>
     </select>
   </label>
 
-  <label>Fun Voice:
+  <label>Fun Voice
     <select id="funVoice">
       <option value="On">On</option>
       <option value="Off" selected>Off</option>
@@ -639,7 +708,7 @@ document.addEventListener('click', () => {
         <option value="500000">500000</option>
         <option value="1000000">1000000</option>
     </select>
-    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.4.3</div>
+    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.4.4</div>
 
 <script>
 document.getElementById('close-options').addEventListener('click', () => {
