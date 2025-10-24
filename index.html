@@ -511,83 +511,6 @@ if ('serviceWorker' in navigator) {
     .catch(err => console.error('SW registration failed:', err));
 }
 </script>
-<script>
-(async () => {
-  const installBtn = document.getElementById('installAppBtn');
-  let deferredPrompt = null;
-
-  const isStandalone =
-    window.matchMedia('(display-mode: standalone)').matches ||
-    window.navigator.standalone === true;
-
-  // --- Step 1: Clean up when not installed
-  async function cleanAll() {
-    console.log('🧹 Cleaning PWA remnants...');
-    if ('serviceWorker' in navigator) {
-      const regs = await navigator.serviceWorker.getRegistrations();
-      for (const reg of regs) {
-        await reg.unregister();
-        console.log('🧹 Unregistered:', reg.scope);
-      }
-    }
-    if ('caches' in window) {
-      const keys = await caches.keys();
-      for (const key of keys) await caches.delete(key);
-      console.log('🧹 Cache cleared.');
-    }
-    localStorage.removeItem('pwa_installed');
-  }
-
-  if (!isStandalone) {
-    await cleanAll();
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker
-        .register('service-worker.js')
-        .then(() => console.log('✅ SW registered after cleanup'))
-        .catch(err => console.error('SW registration failed:', err));
-    }
-  }
-
-  // --- Step 2: Track install state
-  const wasInstalled = localStorage.getItem('pwa_installed') === 'yes';
-  if (isStandalone && !wasInstalled) {
-    localStorage.setItem('pwa_installed', 'yes');
-    installBtn.style.display = 'none';
-    console.log('📱 Marked as installed');
-  }
-  if (!isStandalone && wasInstalled) {
-    localStorage.removeItem('pwa_installed');
-    console.log('🚫 App uninstalled marker cleared');
-  }
-
-  // --- Step 3: Detect install prompt
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    installBtn.style.display = 'block';
-  });
-
-  // --- Step 4: Button click → trigger install
-  installBtn.addEventListener('click', async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    console.log(`User response: ${outcome}`);
-    if (outcome === 'accepted') {
-      installBtn.style.display = 'none';
-      localStorage.setItem('pwa_installed', 'yes');
-    }
-    deferredPrompt = null;
-  });
-
-  // --- Step 5: When installed
-  window.addEventListener('appinstalled', () => {
-    console.log('📲 PWA installed');
-    installBtn.style.display = 'none';
-    localStorage.setItem('pwa_installed', 'yes');
-  });
-})();
-</script>
 <body>
 <!-- 🟢 Smart Install Button -->
 <button id="installAppBtn"
@@ -2445,6 +2368,83 @@ function centerTilesOnResize() {
 // Call it on window resize
 window.addEventListener('resize', centerTilesOnResize);
 
+</script>
+<script>
+(async () => {
+  const installBtn = document.getElementById('installAppBtn');
+  let deferredPrompt = null;
+
+  const isStandalone =
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true;
+
+  // --- Step 1: Clean up when not installed
+  async function cleanAll() {
+    console.log('🧹 Cleaning PWA remnants...');
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const reg of regs) {
+        await reg.unregister();
+        console.log('🧹 Unregistered:', reg.scope);
+      }
+    }
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      for (const key of keys) await caches.delete(key);
+      console.log('🧹 Cache cleared.');
+    }
+    localStorage.removeItem('pwa_installed');
+  }
+
+  if (!isStandalone) {
+    await cleanAll();
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker
+        .register('service-worker.js')
+        .then(() => console.log('✅ SW registered after cleanup'))
+        .catch(err => console.error('SW registration failed:', err));
+    }
+  }
+
+  // --- Step 2: Track install state
+  const wasInstalled = localStorage.getItem('pwa_installed') === 'yes';
+  if (isStandalone && !wasInstalled) {
+    localStorage.setItem('pwa_installed', 'yes');
+    installBtn.style.display = 'none';
+    console.log('📱 Marked as installed');
+  }
+  if (!isStandalone && wasInstalled) {
+    localStorage.removeItem('pwa_installed');
+    console.log('🚫 App uninstalled marker cleared');
+  }
+
+  // --- Step 3: Detect install prompt
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    installBtn.style.display = 'block';
+  });
+
+  // --- Step 4: Button click → trigger install
+  installBtn.addEventListener('click', async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`User response: ${outcome}`);
+    if (outcome === 'accepted') {
+      installBtn.style.display = 'none';
+      localStorage.setItem('pwa_installed', 'yes');
+    }
+    deferredPrompt = null;
+  });
+
+  // --- Step 5: When installed
+  window.addEventListener('appinstalled', () => {
+    console.log('📲 PWA installed');
+    installBtn.style.display = 'none';
+    localStorage.setItem('pwa_installed', 'yes');
+  });
+})();
 </script>
 </body>
 </html>
