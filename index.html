@@ -511,6 +511,40 @@ if ('serviceWorker' in navigator) {
     .catch(err => console.error('SW registration failed:', err));
 }
 </script>
+<script>
+// Detect if the PWA is running in standalone mode (installed)
+const isInstalled = window.matchMedia('(display-mode: standalone)').matches ||
+                    window.navigator.standalone === true;
+
+// Check if previously marked as installed
+const wasInstalled = localStorage.getItem('pwa_installed') === 'yes';
+
+// --- Case 1: Installed now but not marked before
+if (isInstalled && !wasInstalled) {
+  localStorage.setItem('pwa_installed', 'yes');
+  console.log('✅ PWA Installed and marked.');
+}
+
+// --- Case 2: No longer installed but marked before
+if (!isInstalled && wasInstalled) {
+  console.log('🧹 App was uninstalled. Cleaning up...');
+  localStorage.removeItem('pwa_installed');
+
+  // Unregister Service Worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(regs => {
+      regs.forEach(reg => reg.unregister());
+      console.log('🧹 Service Worker unregistered.');
+    });
+  }
+
+  // Optional: clear caches
+  if ('caches' in window) {
+    caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
+    console.log('🧹 Cache cleared.');
+  }
+}
+</script>
 <body>
     <div id="game-container">
         <div id="table"></div>
@@ -567,7 +601,7 @@ if ('serviceWorker' in navigator) {
         <option value="500000">500000</option>
         <option value="1000000">1000000</option>
     </select>
-    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.3.4</div>
+    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.3.5</div>
 
 <script>
 document.getElementById('close-options').addEventListener('click', () => {
