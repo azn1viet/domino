@@ -702,7 +702,7 @@ document.addEventListener('click', () => {
         <option value="500000">500000</option>
         <option value="1000000">1000000</option>
     </select>
-    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.4.7</div>
+    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.4.8</div>
 
 <script>
 document.getElementById('close-options').addEventListener('click', () => {
@@ -2130,7 +2130,7 @@ function renderGame(gameState) {
         if (!gameOver) {
             let isLeftEnd = index === (board.leftEnd ? board.leftEnd.tileIndex : -1);
             let isRightEnd = index === (board.rightEnd ? board.rightEnd.tileIndex : -1);
-            let isDoubleEnd = isDouble(tile); // Check if end tile is double
+            let isDoubleEnd = isDouble(tile);
             if (isLeftEnd) {
                 const openSide = board.leftEnd.openSide;
                 if (isHorizontal) {
@@ -2168,7 +2168,25 @@ function renderGame(gameState) {
         const tableRect = tableDiv.getBoundingClientRect();
         const hand = players[0];
 
-        if (hand.some(tile => canPlayOnEnd(tile, board.leftEnd.value))) {
+        // Determine which tile to check: dragged tile, selected tile, or any tile in hand
+        let tileToCheck = null;
+        if (draggedTile) {
+            tileToCheck = draggedTile;
+        } else if (selectedIndex !== -1) {
+            tileToCheck = hand[selectedIndex];
+        }
+
+        // If a specific tile is active (dragged or selected), only show placeholders for that tile
+        // Otherwise, show placeholders for any playable tile in hand
+        const shouldShowLeft = tileToCheck 
+            ? canPlayOnEnd(tileToCheck, board.leftEnd.value)
+            : hand.some(tile => canPlayOnEnd(tile, board.leftEnd.value));
+            
+        const shouldShowRight = tileToCheck 
+            ? canPlayOnEnd(tileToCheck, board.rightEnd.value)
+            : hand.some(tile => canPlayOnEnd(tile, board.rightEnd.value));
+
+        if (shouldShowLeft) {
             const leftPlacement = calculatePlacement(board, 'left', tableRect, dummyTile);
             leftPlaceholder = document.createElement('div');
             leftPlaceholder.className = 'table-tile placeholder';
@@ -2184,7 +2202,7 @@ function renderGame(gameState) {
             leftPlaceholder.onclick = () => { if (gameState.selectedIndex !== -1) { const selectedTile = players[0][gameState.selectedIndex]; if (canPlayOnEnd(selectedTile, board.leftEnd.value)) playTile(gameState, selectedTile, 'left'); } };
         }
 
-        if (hand.some(tile => canPlayOnEnd(tile, board.rightEnd.value))) {
+        if (shouldShowRight) {
             const rightPlacement = calculatePlacement(board, 'right', tableRect, dummyTile);
             rightPlaceholder = document.createElement('div');
             rightPlaceholder.className = 'table-tile placeholder';
@@ -2213,25 +2231,23 @@ function renderGame(gameState) {
         hand.innerHTML = '';
         const scoreDiv = document.createElement('div');
         scoreDiv.className = 'score';
-// AFTER
-const scoreValue = scores[index];
-const scoreText = scoreValue < 0 ? '-$' + Math.abs(scoreValue) : '$' + scoreValue;
-const scoreLength = scoreText.length;
-const numCoins = Math.max(3, Math.ceil(scoreLength / 2)) ;
-const coinsHtml = '<span class="coin">🪙</span>'.repeat(numCoins);
-let coinColorClass = 'yellow';
-if (scoreValue >= 1000000000) {
-  coinColorClass = 'red';
-} else if (scoreValue >=500000000) {
-  coinColorClass = 'orange';
-} else if (scoreValue >= 100000000) {
-  coinColorClass = 'violet';
-}
- else if (scoreValue <= -1) {
-  coinColorClass = 'silver';
-}
-scoreDiv.innerHTML = `<span class="score-arrow">${!gameOver && index === currentPlayer ? '➤' : ''}</span><span class="score-text">[P${getPlayerNumber(index)}]</span><div class="score-number"><div class="coins-container ${coinColorClass}">${coinsHtml}</div><span class="score-text" style="position: absolute; top: 50%; left: 50%;top: -1px; transform: translate(calc(-50% - 10px), calc(-50% + 3px)); z-index: 2; color: black;">${scoreText}</span></div>`;
-		
+        const scoreValue = scores[index];
+        const scoreText = scoreValue < 0 ? '-$' + Math.abs(scoreValue) : '$' + scoreValue;
+        const scoreLength = scoreText.length;
+        const numCoins = Math.max(3, Math.ceil(scoreLength / 2)) ;
+        const coinsHtml = '<span class="coin">🪙</span>'.repeat(numCoins);
+        let coinColorClass = 'yellow';
+        if (scoreValue >= 1000000000) {
+            coinColorClass = 'red';
+        } else if (scoreValue >=500000000) {
+            coinColorClass = 'orange';
+        } else if (scoreValue >= 100000000) {
+            coinColorClass = 'violet';
+        } else if (scoreValue <= -1) {
+            coinColorClass = 'silver';
+        }
+        scoreDiv.innerHTML = `<span class="score-arrow">${!gameOver && index === currentPlayer ? '➤' : ''}</span><span class="score-text">[P${getPlayerNumber(index)}]</span><div class="score-number"><div class="coins-container ${coinColorClass}">${coinsHtml}</div><span class="score-text" style="position: absolute; top: 50%; left: 50%;top: -1px; transform: translate(calc(-50% - 10px), calc(-50% + 3px)); z-index: 2; color: black;">${scoreText}</span></div>`;
+        
         const tilesContainer = document.createElement('div');
         tilesContainer.className = 'tiles-container';
         let playButtons;
@@ -2251,159 +2267,152 @@ scoreDiv.innerHTML = `<span class="score-arrow">${!gameOver && index === current
             playButtons.querySelectorAll('button').forEach(btn => btn.style.display = 'none');
         }
         
-      // Inside renderGame, replace the tile creation section for player 0:
-players[index].forEach((tile, tileIdx) => {
-    const tileDiv = document.createElement('div');
-    tileDiv.className = 'tile';
-    if (!gameOver && index !== 0 && tileMode === 'Close') {
-        tileDiv.innerHTML = generateBackTileSvg(false);
-    } else {
-        tileDiv.innerHTML = generateTileSvg(false, tile);
-        tileDiv.dataset.top = tile.top;
-        tileDiv.dataset.bottom = tile.bottom;
-        
-        if (!gameOver && index === 0) {
-            let isPlayable = false;
-            if (board.tiles.length === 0) {
-                if (isThisFirstGame) {
-                    const doubles = players[0].filter(t => isDouble(t));
-                    if (doubles.length > 0) {
-                        if (highestDoubleInHand) {
-                            if (tile.top === highestDoubleInHand.top && tile.bottom === highestDoubleInHand.bottom) {
+        players[index].forEach((tile, tileIdx) => {
+            const tileDiv = document.createElement('div');
+            tileDiv.className = 'tile';
+            if (!gameOver && index !== 0 && tileMode === 'Close') {
+                tileDiv.innerHTML = generateBackTileSvg(false);
+            } else {
+                tileDiv.innerHTML = generateTileSvg(false, tile);
+                tileDiv.dataset.top = tile.top;
+                tileDiv.dataset.bottom = tile.bottom;
+                
+                if (!gameOver && index === 0) {
+                    let isPlayable = false;
+                    if (board.tiles.length === 0) {
+                        if (isThisFirstGame) {
+                            const doubles = players[0].filter(t => isDouble(t));
+                            if (doubles.length > 0) {
+                                if (highestDoubleInHand) {
+                                    if (tile.top === highestDoubleInHand.top && tile.bottom === highestDoubleInHand.bottom) {
+                                        isPlayable = true;
+                                    }
+                                } else {
+                                    isPlayable = true;
+                                }
+                            } else {
                                 isPlayable = true;
                             }
                         } else {
                             isPlayable = true;
                         }
                     } else {
-                        isPlayable = true;
+                        isPlayable = canPlayTile(tile, board);
                     }
-                } else {
-                    isPlayable = true;
-                }
-            } else {
-                isPlayable = canPlayTile(tile, board);
-            }
 
-            if (isPlayable && currentPlayer === 0) {
-                tileDiv.classList.add('draggable');
-                tileDiv.draggable = true;
-                
-                // FIXED: Clear selection on dragstart to prevent "Invalid move"
-                tileDiv.ondragstart = (e) => { 
-                    initAudioContext(); 
-                    if (!soundLocked) canPlaySound = true;
-                    draggedTile = tile;
-                    // Clear selection when starting drag
-                    gameState.selectedIndex = -1;
-                    e.dataTransfer.setData('text/plain', JSON.stringify(tile)); 
-                };
-                
-                tileDiv.addEventListener('touchstart', (e) => {
-                    initAudioContext();
-                   if (!soundLocked) canPlaySound = true;
-                    draggedTile = tile;
-                    // Clear selection when starting touch drag
-                    gameState.selectedIndex = -1;
-                    
-                    const touch = e.touches[0];
-                    const ghost = tileDiv.cloneNode(true);
-                    ghost.style.position = 'fixed';
-                    ghost.style.pointerEvents = 'none';
-                    ghost.style.zIndex = 1000;
-                    document.body.appendChild(ghost);
-                    ghost.style.left = `${touch.clientX - ghost.offsetWidth / 2}px`;
-                    ghost.style.top = `${touch.clientY - ghost.offsetHeight / 2}px`;
-                    let moved = false;
-                    const onTouchMove = (ev) => {
-                        ev.preventDefault();
-                        if (ev.touches.length === 1) {
-                            moved = true;
-                            const t = ev.touches[0];
-                            ghost.style.left = `${t.clientX - ghost.offsetWidth / 2}px`;
-                            ghost.style.top = `${t.clientY - ghost.offsetHeight / 2}px`;
-                            if (board.tiles.length > 0) {
-                                if (leftPlaceholder) leftPlaceholder.style.border = '2px dashed #6a6a6a';
-                                if (rightPlaceholder) rightPlaceholder.style.border = '2px dashed #6a6a6a';
-                                const dropX = t.clientX;
-                                const dropY = t.clientY;
-                                if (leftPlaceholder) {
-                                    const leftRect = leftPlaceholder.getBoundingClientRect();
-                                    if (dropX > leftRect.left && dropX < leftRect.right && dropY > leftRect.top && dropY < leftRect.bottom) {
-                                        if (canPlayOnEnd(draggedTile, board.leftEnd.value)) {
-                                            leftPlaceholder.style.border = '2px dashed yellow';
+                    if (isPlayable && currentPlayer === 0) {
+                        tileDiv.classList.add('draggable');
+                        tileDiv.draggable = true;
+                        
+                        tileDiv.ondragstart = (e) => { 
+                            initAudioContext(); 
+                            if (!soundLocked) canPlaySound = true;
+                            draggedTile = tile;
+                            gameState.selectedIndex = -1;
+                            e.dataTransfer.setData('text/plain', JSON.stringify(tile)); 
+                        };
+                        
+                        tileDiv.addEventListener('touchstart', (e) => {
+                            initAudioContext();
+                            if (!soundLocked) canPlaySound = true;
+                            draggedTile = tile;
+                            gameState.selectedIndex = -1;
+                            
+                            const touch = e.touches[0];
+                            const ghost = tileDiv.cloneNode(true);
+                            ghost.style.position = 'fixed';
+                            ghost.style.pointerEvents = 'none';
+                            ghost.style.zIndex = 1000;
+                            document.body.appendChild(ghost);
+                            ghost.style.left = `${touch.clientX - ghost.offsetWidth / 2}px`;
+                            ghost.style.top = `${touch.clientY - ghost.offsetHeight / 2}px`;
+                            let moved = false;
+                            const onTouchMove = (ev) => {
+                                ev.preventDefault();
+                                if (ev.touches.length === 1) {
+                                    moved = true;
+                                    const t = ev.touches[0];
+                                    ghost.style.left = `${t.clientX - ghost.offsetWidth / 2}px`;
+                                    ghost.style.top = `${t.clientY - ghost.offsetHeight / 2}px`;
+                                    if (board.tiles.length > 0) {
+                                        if (leftPlaceholder) leftPlaceholder.style.border = '2px dashed #6a6a6a';
+                                        if (rightPlaceholder) rightPlaceholder.style.border = '2px dashed #6a6a6a';
+                                        const dropX = t.clientX;
+                                        const dropY = t.clientY;
+                                        if (leftPlaceholder && canPlayOnEnd(draggedTile, board.leftEnd.value)) {
+                                            const leftRect = leftPlaceholder.getBoundingClientRect();
+                                            if (dropX > leftRect.left && dropX < leftRect.right && dropY > leftRect.top && dropY < leftRect.bottom) {
+                                                leftPlaceholder.style.border = '2px dashed yellow';
+                                            }
+                                        }
+                                        if (rightPlaceholder && canPlayOnEnd(draggedTile, board.rightEnd.value)) {
+                                            const rightRect = rightPlaceholder.getBoundingClientRect();
+                                            if (dropX > rightRect.left && dropX < rightRect.right && dropY > rightRect.top && dropY < rightRect.bottom) {
+                                                rightPlaceholder.style.border = '2px dashed yellow';
+                                            }
                                         }
                                     }
                                 }
-                                if (rightPlaceholder) {
-                                    const rightRect = rightPlaceholder.getBoundingClientRect();
-                                    if (dropX > rightRect.left && dropX < rightRect.right && dropY > rightRect.top && dropY < rightRect.bottom) {
-                                        if (canPlayOnEnd(draggedTile, board.rightEnd.value)) {
-                                            rightPlaceholder.style.border = '2px dashed yellow';
-                                        }
-                                    }
+                            };
+                            const onTouchEnd = (ev) => {
+                                document.removeEventListener('touchmove', onTouchMove);
+                                document.removeEventListener('touchend', onTouchEnd);
+                                ghost.remove();
+                                if (board.tiles.length > 0) {
+                                    if (leftPlaceholder) leftPlaceholder.style.border = '2px dashed #6a6a6a';
+                                    if (rightPlaceholder) rightPlaceholder.style.border = '2px dashed #6a6a6a';
                                 }
-                            }
-                        }
-                    };
-                    const onTouchEnd = (ev) => {
-                        document.removeEventListener('touchmove', onTouchMove);
-                        document.removeEventListener('touchend', onTouchEnd);
-                        ghost.remove();
-                        if (board.tiles.length > 0) {
-                            if (leftPlaceholder) leftPlaceholder.style.border = '2px dashed #6a6a6a';
-                            if (rightPlaceholder) rightPlaceholder.style.border = '2px dashed #6a6a6a';
-                        }
-                        if (!moved) {
-                            draggedTile = null;
-                            return;
-                        }
-                        if (moved) {
-                            tileDiv.dataset.justMoved = 'true';
-                        }
-                        const dropTouch = ev.changedTouches[0] || {clientX: 0, clientY: 0};
-                        let dropped = false;
-                        const dropX = dropTouch.clientX;
-                        const dropY = dropTouch.clientY;
-                        if (board.tiles.length === 0) {
-                            const tableRect = tableDiv.getBoundingClientRect();
-                            if (dropX > tableRect.left && dropX < tableRect.right && dropY > tableRect.top && dropY < tableRect.bottom) {
-                                playTile(gameState, draggedTile, 'right');
-                                dropped = true;
-                            }
-                        } else {
-                            if (leftPlaceholder) {
-                                const leftRect = leftPlaceholder.getBoundingClientRect();
-                                if (dropX > leftRect.left && dropX < leftRect.right && dropY > leftRect.top && dropY < leftRect.bottom) {
-                                    if (canPlayOnEnd(draggedTile, board.leftEnd.value)) {
-                                        playTile(gameState, draggedTile, 'left');
-                                        dropped = true;
-                                    }
+                                if (!moved) {
+                                    draggedTile = null;
+                                    return;
                                 }
-                            }
-                            if (rightPlaceholder) {
-                                const rightRect = rightPlaceholder.getBoundingClientRect();
-                                if (dropX > rightRect.left && dropX < rightRect.right && dropY > rightRect.top && dropY < rightRect.bottom) {
-                                    if (canPlayOnEnd(draggedTile, board.rightEnd.value)) {
+                                if (moved) {
+                                    tileDiv.dataset.justMoved = 'true';
+                                }
+                                const dropTouch = ev.changedTouches[0] || {clientX: 0, clientY: 0};
+                                let dropped = false;
+                                const dropX = dropTouch.clientX;
+                                const dropY = dropTouch.clientY;
+                                if (board.tiles.length === 0) {
+                                    const tableRect = tableDiv.getBoundingClientRect();
+                                    if (dropX > tableRect.left && dropX < tableRect.right && dropY > tableRect.top && dropY < tableRect.bottom) {
                                         playTile(gameState, draggedTile, 'right');
                                         dropped = true;
                                     }
+                                } else {
+                                    if (leftPlaceholder) {
+                                        const leftRect = leftPlaceholder.getBoundingClientRect();
+                                        if (dropX > leftRect.left && dropX < leftRect.right && dropY > leftRect.top && dropY < leftRect.bottom) {
+                                            if (canPlayOnEnd(draggedTile, board.leftEnd.value)) {
+                                                playTile(gameState, draggedTile, 'left');
+                                                dropped = true;
+                                            }
+                                        }
+                                    }
+                                    if (rightPlaceholder) {
+                                        const rightRect = rightPlaceholder.getBoundingClientRect();
+                                        if (dropX > rightRect.left && dropX < rightRect.right && dropY > rightRect.top && dropY < rightRect.bottom) {
+                                            if (canPlayOnEnd(draggedTile, board.rightEnd.value)) {
+                                                playTile(gameState, draggedTile, 'right');
+                                                dropped = true;
+                                            }
+                                        }
+                                    }
                                 }
-                            }
-                        }
-                        draggedTile = null;
-                    };
-                    document.addEventListener('touchmove', onTouchMove, {passive: false});
-                    document.addEventListener('touchend', onTouchEnd, {passive: false});
-                });
+                                draggedTile = null;
+                            };
+                            document.addEventListener('touchmove', onTouchMove, {passive: false});
+                            document.addEventListener('touchend', onTouchEnd, {passive: false});
+                        });
+                    }
+                    
+                    tileDiv.onclick = (e) => { initAudioContext(); if (!soundLocked) canPlaySound = true; e.stopPropagation(); if (tileDiv.dataset.justMoved === 'true') { delete tileDiv.dataset.justMoved; return; } handleTileClick(gameState, tileIdx, playButtons); };
+                    if (selectedIndex === tileIdx) tileDiv.classList.add('selected');
+                }
             }
-            
-            tileDiv.onclick = (e) => { initAudioContext(); if (!soundLocked) canPlaySound = true; e.stopPropagation(); if (tileDiv.dataset.justMoved === 'true') { delete tileDiv.dataset.justMoved; return; } handleTileClick(gameState, tileIdx, playButtons); };
-            if (selectedIndex === tileIdx) tileDiv.classList.add('selected');
-        }
-    }
-    tilesContainer.appendChild(tileDiv);
-});
+            tilesContainer.appendChild(tileDiv);
+        });
+        
         if (index === 2) { hand.appendChild(tilesContainer); hand.appendChild(scoreDiv); } 
         else if (index === 0) { hand.appendChild(scoreDiv); hand.appendChild(tilesContainer); } 
         else { hand.appendChild(scoreDiv); hand.appendChild(tilesContainer); }
@@ -2454,6 +2463,7 @@ players[index].forEach((tile, tileIdx) => {
         }
     });
 }
+
 
 let gameState = setupGame();
 
