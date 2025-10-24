@@ -1,7 +1,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+
 
   <!-- App title & description -->
   <title>Domino</title>
@@ -573,13 +574,6 @@ select {
 }
     </style>
 </head>
-<script>
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('service-worker.js')
-    .then(() => console.log('✅ Service worker registered'))
-    .catch(err => console.error('SW registration failed:', err));
-}
-</script>
 <body>
 <!-- 🟢 Smart Install Button -->
 <button id="installBtn"
@@ -708,7 +702,7 @@ document.addEventListener('click', () => {
         <option value="500000">500000</option>
         <option value="1000000">1000000</option>
     </select>
-    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.4.6</div>
+    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.4.7</div>
 
 <script>
 document.getElementById('close-options').addEventListener('click', () => {
@@ -2587,7 +2581,13 @@ function centerTilesOnResize() {
 
 // Call it on window resize
 window.addEventListener('resize', centerTilesOnResize);
-
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('service-worker.js')
+    .then(() => console.log('✅ Service worker registered'))
+    .catch(err => console.error('SW registration failed:', err));
+}
 </script>
 </body>
 </html>
