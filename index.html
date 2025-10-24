@@ -512,7 +512,7 @@ if ('serviceWorker' in navigator) {
 }
 </script>
 <body>
-<!-- 🟢 Smart Install Button -->
+<!-- Temporary always-visible Install App button -->
 <button id="installAppBtn"
   style="
     position: fixed;
@@ -527,11 +527,11 @@ if ('serviceWorker' in navigator) {
     font-weight: bold;
     cursor: pointer;
     z-index: 9999;
-    display: none;
     box-shadow: 0 0 10px #0f08;
   ">
   📲 Install App
 </button>
+
     <div id="game-container">
         <div id="table"></div>
     </div>
@@ -2374,75 +2374,68 @@ window.addEventListener('resize', centerTilesOnResize);
   const installBtn = document.getElementById('installAppBtn');
   let deferredPrompt = null;
 
-  const isStandalone =
-    window.matchMedia('(display-mode: standalone)').matches ||
-    window.navigator.standalone === true;
-
-  // --- Step 1: Clean up when not installed
+  // Helper: cleanup stale SW and cache when reloading after uninstall
   async function cleanAll() {
-    console.log('🧹 Cleaning PWA remnants...');
     if ('serviceWorker' in navigator) {
       const regs = await navigator.serviceWorker.getRegistrations();
-      for (const reg of regs) {
-        await reg.unregister();
-        console.log('🧹 Unregistered:', reg.scope);
-      }
+      for (const reg of regs) await reg.unregister();
     }
     if ('caches' in window) {
       const keys = await caches.keys();
       for (const key of keys) await caches.delete(key);
-      console.log('🧹 Cache cleared.');
     }
     localStorage.removeItem('pwa_installed');
   }
 
-  if (!isStandalone) {
-    await cleanAll();
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker
-        .register('service-worker.js')
-        .then(() => console.log('✅ SW registered after cleanup'))
-        .catch(err => console.error('SW registration failed:', err));
+  const isStandalone =
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true;
+
+  // if not standalone, clean up
+  if (!isStandalone) await cleanAll();
+
+  // Register SW again
+  if ('serviceWorker' in navigator) {
+    try {
+      await navigator.serviceWorker.register('service-worker.js');
+      console.log('✅ SW registered');
+    } catch (err) {
+      console.error('❌ SW registration failed:', err);
     }
   }
 
-  // --- Step 2: Track install state
-  const wasInstalled = localStorage.getItem('pwa_installed') === 'yes';
-  if (isStandalone && !wasInstalled) {
-    localStorage.setItem('pwa_installed', 'yes');
-    installBtn.style.display = 'none';
-    console.log('📱 Marked as installed');
-  }
-  if (!isStandalone && wasInstalled) {
-    localStorage.removeItem('pwa_installed');
-    console.log('🚫 App uninstalled marker cleared');
-  }
-
-  // --- Step 3: Detect install prompt
+  // Handle beforeinstallprompt (Chrome, Edge)
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
-    installBtn.style.display = 'block';
+    console.log('📢 Install prompt available');
   });
 
-  // --- Step 4: Button click → trigger install
+  // Fallback: force button visible for iOS Safari (since it doesn’t fire beforeinstallprompt)
+  installBtn.style.display = 'block';
+
+  // Click handler
   installBtn.addEventListener('click', async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    console.log(`User response: ${outcome}`);
-    if (outcome === 'accepted') {
-      installBtn.style.display = 'none';
-      localStorage.setItem('pwa_installed', 'yes');
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      console.log('User install choice:', outcome);
+      if (outcome === 'accepted') {
+        localStorage.setItem('pwa_installed', 'yes');
+        installBtn.style.display = 'none';
+      }
+      deferredPrompt = null;
+    } else if (/iphone|ipad|ipod/i.test(navigator.userAgent)) {
+      alert('On iOS, tap the Share icon (↑) then “Add to Home Screen”.');
+    } else {
+      alert('If install doesn’t start, check if HTTPS + manifest.json are valid.');
     }
-    deferredPrompt = null;
   });
 
-  // --- Step 5: When installed
   window.addEventListener('appinstalled', () => {
-    console.log('📲 PWA installed');
-    installBtn.style.display = 'none';
+    console.log('✅ App installed!');
     localStorage.setItem('pwa_installed', 'yes');
+    installBtn.style.display = 'none';
   });
 })();
 </script>
