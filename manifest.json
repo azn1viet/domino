@@ -5,6 +5,7 @@
   "display": "standalone",
   "background_color": "#111111",
   "theme_color": "#222222",
+  "version": "1.4.0", 
   "icons": [
     {
       "src": "logo192x192.png",
