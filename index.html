@@ -2,6 +2,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- App title & description -->
+  <title>Watermark</title>
+  <meta name="description" content="Watermark images easily for copyright protection.">
+
+  <!-- iOS Web App -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Domino">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="logo.png">
+
+  <!-- Android / Chrome -->
+  <meta name="theme-color" content="#444444">
+  <link rel="manifest" href="manifest.json">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" sizes="256x256" href="logo.png">
+
+  <!-- Font (Google Sans-style) -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+ </head>
+
     <title>Block Dominoes</title>
     <style>
         :root {
@@ -19,7 +42,7 @@
             background-color: #444;
             position: fixed;
             overflow: hidden;
-			  font-family: 'Poppins', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
   font-weight: 400;
         }
 #game-container {
@@ -537,7 +560,7 @@
         <option value="500000">500000</option>
         <option value="1000000">1000000</option>
     </select>
-    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.3.1</div>
+    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.3.2</div>
 
 <script>
 document.getElementById('close-options').addEventListener('click', () => {
@@ -1049,137 +1072,7 @@ function playAI(gameState) {
          }
     }
 }
-/*
-function calculatePlacement(board, end, tableRect, tile) {
-    const { V_W, V_H, H_W, H_H, FULL, OFFSET } = getTileSizes();
-    const MARGIN = 0; 
 
-    let e = board[end === 'left' ? 'leftEnd' : 'rightEnd'];
-    let isLeftChain = end === 'left';
-    let turnDir = isLeftChain ? 'up' : 'down';
-
-    let p = {};
-    let hdir = e.dir; // 'left' or 'right'
-    let isDoubleTile = isDouble(tile);
-
-    // New: For doubles, prioritize vertical
-    let tryVerticalFirst = isDoubleTile;
-
-    // --- FIXED #1: only trigger vertical for doubles if near the edge ---
-    if (isDoubleTile) {
-        const nearLeftEdge = e.x - FULL * 1.5 < MARGIN + FULL * 2;
-        const nearRightEdge = e.x + FULL * 2.5 > tableRect.width - (MARGIN + FULL * 2);
-        if ((isLeftChain && nearLeftEdge) || (!isLeftChain && nearRightEdge)) {
-            tryVerticalFirst = true;
-        } else {
-            tryVerticalFirst = false; // stay horizontal if enough space
-        }
-    }
-
-    // Try vertical first if double & near edge
-    if (tryVerticalFirst) {
-        if (turnDir === 'up') {
-            p.x = e.x - OFFSET;
-            p.y = e.y - (FULL + OFFSET);
-            p.isHorizontal = false;
-            p.width = V_W;
-            p.height = V_H;
-            p.nextEndX = p.x + OFFSET;
-            p.nextEndY = p.y + OFFSET;
-        } else {
-            p.x = e.x - OFFSET;
-            p.y = e.y + OFFSET;
-            p.isHorizontal = false;
-            p.width = V_W;
-            p.height = V_H;
-            p.nextEndX = p.x + OFFSET;
-            p.nextEndY = p.y + FULL - OFFSET;
-        }
-
-        const v_eff_x = p.x + board.offsetX;
-        const v_eff_y = p.y + board.offsetY;
-        p.boundCheck = (v_eff_x < MARGIN || v_eff_x + p.width > tableRect.width - MARGIN ||
-                        v_eff_y < MARGIN || v_eff_y + p.height > tableRect.height - MARGIN);
-
-        if (!p.boundCheck) {
-            let newHdir = hdir === 'left' ? 'right' : 'left';
-            p.newHdir = newHdir;
-            p.turnDir = turnDir;
-            return p;
-        } else {
-            turnDir = isLeftChain ? 'up' : 'down';
-        }
-    }
-
-    // Fallback/Try horizontal
-    if (hdir === 'left') {
-        p.x = e.x - (FULL + OFFSET);
-        p.y = e.y - OFFSET;
-        p.isHorizontal = true;
-        p.width = H_W;
-        p.height = H_H;
-        p.nextEndX = p.x + OFFSET;
-        p.nextEndY = p.y + OFFSET;
-    } else {
-        p.x = e.x + OFFSET;
-        p.y = e.y - OFFSET;
-        p.isHorizontal = true;
-        p.width = H_W;
-        p.height = H_H;
-        p.nextEndX = p.x + FULL - OFFSET;
-        p.nextEndY = p.y + OFFSET;
-    }
-
-    const eff_x = p.x + board.offsetX;
-    const eff_y = p.y + board.offsetY;
-    p.boundCheck = (eff_x < MARGIN || eff_x + p.width > tableRect.width - MARGIN ||
-                    eff_y < MARGIN || eff_y + p.height > tableRect.height - MARGIN);
-
-    if (!p.boundCheck) {
-        return p;
-    } else {
-        // --- FIXED #2: non-doubles also turn vertical when actually out of bounds ---
-        if (turnDir === 'up') {
-            p.x = e.x - OFFSET;
-            p.y = e.y - (FULL + OFFSET);
-            p.isHorizontal = false;
-            p.width = V_W;
-            p.height = V_H;
-            p.nextEndX = p.x + OFFSET;
-            p.nextEndY = p.y + OFFSET;
-        } else {
-            p.x = e.x - OFFSET;
-            p.y = e.y + OFFSET;
-            p.isHorizontal = false;
-            p.width = V_W;
-            p.height = V_H;
-            p.nextEndX = p.x + OFFSET;
-            p.nextEndY = p.y + FULL - OFFSET;
-        }
-
-        const v_eff_x = p.x + board.offsetX;
-        const v_eff_y = p.y + board.offsetY;
-        let v_bound = (v_eff_x < MARGIN || v_eff_x + p.width > tableRect.width - MARGIN ||
-                       v_eff_y < MARGIN || v_eff_y + p.height > tableRect.height - MARGIN);
-
-        if (v_bound) {
-            let shiftX = 0, shiftY = 0;
-            if (v_eff_x < MARGIN) shiftX = MARGIN - v_eff_x;
-            else if (v_eff_x + p.width > tableRect.width - MARGIN)
-                shiftX = (tableRect.width - MARGIN) - (v_eff_x + p.width);
-            if (v_eff_y < MARGIN) shiftY = MARGIN - v_eff_y;
-            else if (v_eff_y + p.height > tableRect.height - MARGIN)
-                shiftY = (tableRect.height - MARGIN) - (v_eff_y + p.height);
-            board.offsetX += shiftX;
-            board.offsetY += shiftY;
-        }
-
-        let newHdir = hdir === 'left' ? 'right' : 'left';
-        p.newHdir = newHdir;
-        p.turnDir = turnDir;
-        return p;
-    }
-}*/
 
 function calculatePlacement(board, end, tableRect, tile) {
     const { V_W, V_H, H_W, H_H, FULL, OFFSET } = getTileSizes();
@@ -1786,7 +1679,11 @@ function handleNormalGameWin(gameState) {
     showNewGameButton();
 }
 
-function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPlayedTile, lastPlayedEnd) {
+function getPreviousPlayer(p) {
+    return (p - 1 + numPlayers) % numPlayers;
+}
+
+function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedTile, lastPlayedEnd) {
     gameState.gameOver = true;
     const { players, board, roundHistory } = gameState;
     
@@ -1799,126 +1696,161 @@ function handleBlockedGame(gameState, lastPlayerWhoPlayed, firstSkipped, lastPla
     }
     
     // Reconstruct last player's hand before their move
-    const lastPlayerHandBefore = [...players[lastPlayerWhoPlayed], lastPlayedTile];
+    const lastPlayerHandBefore = [...players[lastValidPlayer], lastPlayedTile];
     const playersAtLast = JSON.parse(JSON.stringify(players));
-    playersAtLast[lastPlayerWhoPlayed].push({...lastPlayedTile});
+    playersAtLast[lastValidPlayer].push({...lastPlayedTile});
     
+    // Check if last player had non-blocking alternatives
     const lastHadNonBlockingAlt = hasPreventingAlternative(
         lastPlayerHandBefore, 
         prevBoard, 
         playersAtLast, 
-        lastPlayerWhoPlayed,
+        lastValidPlayer,
         0
     );
     
-    let blocker = lastPlayerWhoPlayed;
+    let blocker = lastValidPlayer;
     let assistant = -1;
     
+    // ============================================================================
+    // PRIMARY CHECK: Did last player CHOOSE to block?
+    // ============================================================================
     if (lastHadNonBlockingAlt) {
-        // Last player chose to block intentionally
-        // Check if immediate previous player SET UP this block
-        if (roundHistory.length >= 2) {
-            const prevMove = roundHistory[roundHistory.length - 2];
-            const prevPlayer = prevMove.player;
-            
-            if (prevPlayer === getPreviousPlayer(lastPlayerWhoPlayed)) {
-                const prevHandBefore = [...players[prevPlayer], prevMove.playedTile];
-                const prevBoardBefore = prevMove.boardBefore;
-                
-                if (prevBoardBefore && prevBoardBefore.leftEnd) {
-                    const playersAtPrev = JSON.parse(JSON.stringify(players));
-                    for (let i = roundHistory.length - 2; i < roundHistory.length; i++) {
-                        const move = roundHistory[i];
-                        playersAtPrev[move.player].push({...move.playedTile});
-                    }
-                    
-                    // FIXED: Check if prev player had NON-BLOCKING alternative
-                    // If they could have avoided setting up the block, they're the assistant
-                    const prevHadNonBlockingAlt = hasPreventingAlternative(
-                        prevHandBefore,
-                        prevBoardBefore,
-                        playersAtPrev,
-                        prevPlayer,
-                        0
-                    );
-                    
-                    if (prevHadNonBlockingAlt) {
-                        assistant = prevPlayer;
-                    }
-                }
+        // Last player INTENTIONALLY blocked
+        
+        // STEP 1: Check IMMEDIATE LEFT NEIGHBOR (by seat position)
+        const leftNeighbor = getPreviousPlayer(lastValidPlayer);
+        
+        // Find left neighbor's LAST MOVE in history (search backwards)
+        let leftNeighborMove = null;
+        let leftNeighborMoveIndex = -1;
+        for (let i = roundHistory.length - 1; i >= 0; i--) {
+            if (roundHistory[i].player === leftNeighbor) {
+                leftNeighborMove = roundHistory[i];
+                leftNeighborMoveIndex = i;
+                break;
             }
         }
         
-        if (assistant !== -1) {
-            updateScoresForIntentionalBlockWithAssist(blocker, assistant, gameState);
-        } else {
-            updateScoresForIntentionalBlockNoAssist(blocker, gameState);
-        }
-    } else {
-        // Last player was forced to block
-        if (roundHistory.length >= 2) {
-            const prevMove = roundHistory[roundHistory.length - 2];
-            const prevPlayer = prevMove.player;
+        // Check if left neighbor exists in history and has valid board state
+        if (leftNeighborMove && leftNeighborMove.boardBefore && leftNeighborMove.boardBefore.leftEnd) {
+            // Reconstruct left neighbor's hand before their move
+            const leftNeighborHandBefore = [...players[leftNeighbor], leftNeighborMove.playedTile];
             
-            if (prevPlayer === getPreviousPlayer(lastPlayerWhoPlayed)) {
-                const prevHandBefore = [...players[prevPlayer], prevMove.playedTile];
-                const prevBoardBefore = prevMove.boardBefore;
-                
-                if (prevBoardBefore && prevBoardBefore.leftEnd) {
-                    const playersAtPrev = JSON.parse(JSON.stringify(players));
-                    for (let i = roundHistory.length - 2; i < roundHistory.length; i++) {
-                        const move = roundHistory[i];
-                        playersAtPrev[move.player].push({...move.playedTile});
-                    }
-                    
-                    // Check if prev player had NON-BLOCKING alternative
-                    // If yes, they forced last player into blocking
-                    const prevHadNonBlockingAlt = hasPreventingAlternative(
-                        prevHandBefore,
-                        prevBoardBefore,
-                        playersAtPrev,
-                        prevPlayer,
-                        0
-                    );
-                    
-                    if (prevHadNonBlockingAlt) {
-                        blocker = prevPlayer;
-                        updateScoresForIntentionalBlockNoAssist(blocker, gameState);
-                        return;
-                    }
-                }
+            // Reconstruct all players' hands at that moment
+            const playersAtNeighborMove = JSON.parse(JSON.stringify(players));
+            
+            // Add back all tiles played AFTER left neighbor's move
+            for (let i = leftNeighborMoveIndex + 1; i < roundHistory.length; i++) {
+                const move = roundHistory[i];
+                playersAtNeighborMove[move.player].push({...move.playedTile});
+            }
+            
+            // Check if left neighbor had non-blocking alternative
+            const leftNeighborHadAlt = hasPreventingAlternative(
+                leftNeighborHandBefore,
+                leftNeighborMove.boardBefore,
+                playersAtNeighborMove,
+                leftNeighbor,
+                0
+            );
+            
+            if (leftNeighborHadAlt) {
+                // ASSISTANT FOUND!
+                assistant = leftNeighbor;
+                updateScoresForIntentionalBlockWithAssist(blocker, assistant, gameState);
+                renderGame(gameState);
+                showNewGameButton();
+                return; // TERMINATE - No further checks needed
             }
         }
-        // Check for remote blocker (2 moves back)
-        if (roundHistory.length >= 3) {
-            const grandMove = roundHistory[roundHistory.length - 3];
-            const grandPlayer = grandMove.player;
-            const grandBoardBefore = grandMove.boardBefore;
-            if (grandBoardBefore && grandBoardBefore.leftEnd) {
-                const grandHandBefore = [...players[grandPlayer], grandMove.playedTile];
-                const playersAtGrand = JSON.parse(JSON.stringify(players));
-                for (let i = roundHistory.length - 3; i < roundHistory.length; i++) {
-                    const move = roundHistory[i];
-                    playersAtGrand[move.player].push({...move.playedTile});
-                }
-                const grandHadPreventingAlt = hasPreventingAlternative(
-                    grandHandBefore,
-                    grandBoardBefore,
-                    playersAtGrand,
-                    grandPlayer,
-                    2
-                );
-                if (grandHadPreventingAlt) {
-                    blocker = grandPlayer;
-                    updateScoresForIntentionalBlockNoAssist(blocker, gameState);
-                    return;
-                }
-            }
-        }
-        // If no intentional by prev or grand, it's force block
-        updateScoresForForceBlock(gameState);
+        
+        // If we reach here: left neighbor NOT guilty (or didn't play)
+        // Execute Solo Intentional Block
+        updateScoresForIntentionalBlockNoAssist(blocker, gameState);
+        renderGame(gameState);
+        showNewGameButton();
+        return; // TERMINATE - No further checks needed
     }
     
+    // ============================================================================
+    // SECONDARY CHECK: Last player was FORCED to block
+    // Now check who CAUSED the forced block
+    // ============================================================================
+    
+    // STEP 2: Check immediate previous player who actually played
+    if (roundHistory.length >= 2) {
+        const prevMove = roundHistory[roundHistory.length - 2];
+        const prevPlayer = prevMove.player;
+        const prevBoardBefore = prevMove.boardBefore;
+        
+        if (prevBoardBefore && prevBoardBefore.leftEnd) {
+            const prevHandBefore = [...players[prevPlayer], prevMove.playedTile];
+            const playersAtPrev = JSON.parse(JSON.stringify(players));
+            
+            // Add back tiles from last two moves
+            for (let i = roundHistory.length - 2; i < roundHistory.length; i++) {
+                const move = roundHistory[i];
+                playersAtPrev[move.player].push({...move.playedTile});
+            }
+            
+            // Check if prev player had NON-BLOCKING alternative
+            const prevHadNonBlockingAlt = hasPreventingAlternative(
+                prevHandBefore,
+                prevBoardBefore,
+                playersAtPrev,
+                prevPlayer,
+                0
+            );
+            
+            if (prevHadNonBlockingAlt) {
+                // Previous player FORCED the block
+                blocker = prevPlayer;
+                updateScoresForIntentionalBlockNoAssist(blocker, gameState);
+                renderGame(gameState);
+                showNewGameButton();
+                return;
+            }
+        }
+    }
+    
+    // STEP 3: Check for remote blocker (2 moves back)
+    if (roundHistory.length >= 3) {
+        const grandMove = roundHistory[roundHistory.length - 3];
+        const grandPlayer = grandMove.player;
+        const grandBoardBefore = grandMove.boardBefore;
+        
+        if (grandBoardBefore && grandBoardBefore.leftEnd) {
+            const grandHandBefore = [...players[grandPlayer], grandMove.playedTile];
+            const playersAtGrand = JSON.parse(JSON.stringify(players));
+            
+            // Add back tiles from last three moves
+            for (let i = roundHistory.length - 3; i < roundHistory.length; i++) {
+                const move = roundHistory[i];
+                playersAtGrand[move.player].push({...move.playedTile});
+            }
+            
+            const grandHadPreventingAlt = hasPreventingAlternative(
+                grandHandBefore,
+                grandBoardBefore,
+                playersAtGrand,
+                grandPlayer,
+                2
+            );
+            
+            if (grandHadPreventingAlt) {
+                // Remote blocker found
+                blocker = grandPlayer;
+                updateScoresForIntentionalBlockNoAssist(blocker, gameState);
+                renderGame(gameState);
+                showNewGameButton();
+                return;
+            }
+        }
+    }
+    
+    // STEP 4: No intentional blocker found - Force Block
+    updateScoresForForceBlock(gameState);
     renderGame(gameState);
     showNewGameButton();
 }
