@@ -708,7 +708,7 @@ document.addEventListener('click', () => {
         <option value="500000">500000</option>
         <option value="1000000">1000000</option>
     </select>
-    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.4.4</div>
+    <div style="position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#ccc;font-size:14px;opacity:0.8;pointer-events:none;">Version 1.4.5</div>
 
 <script>
 document.getElementById('close-options').addEventListener('click', () => {
@@ -1866,59 +1866,93 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
     if (lastHadNonBlockingAlt) {
         // Last player INTENTIONALLY blocked
         
-        // STEP 1: Check IMMEDIATE LEFT NEIGHBOR (by seat position)
-        const leftNeighbor = getPreviousPlayer(lastValidPlayer);
-        
-        // Find left neighbor's LAST MOVE in history (search backwards)
-        let leftNeighborMove = null;
-        let leftNeighborMoveIndex = -1;
-        for (let i = roundHistory.length - 1; i >= 0; i--) {
-            if (roundHistory[i].player === leftNeighbor) {
-                leftNeighborMove = roundHistory[i];
-                leftNeighborMoveIndex = i;
-                break;
-            }
-        }
-        
-        // Check if left neighbor exists in history and has valid board state
-        if (leftNeighborMove && leftNeighborMove.boardBefore && leftNeighborMove.boardBefore.leftEnd) {
-            // Reconstruct left neighbor's hand before their move
-            const leftNeighborHandBefore = [...players[leftNeighbor], leftNeighborMove.playedTile];
+        if (roundHistory.length >= 2) {
+            const secondLastMove = roundHistory[roundHistory.length - 2];
+            const playerWhoPlayedBefore = secondLastMove.player;
             
-            // Reconstruct all players' hands at that moment
-            const playersAtNeighborMove = JSON.parse(JSON.stringify(players));
-            
-            // Add back all tiles played AFTER left neighbor's move
-            for (let i = leftNeighborMoveIndex + 1; i < roundHistory.length; i++) {
-                const move = roundHistory[i];
-                playersAtNeighborMove[move.player].push({...move.playedTile});
-            }
-            
-            // Check if left neighbor had non-blocking alternative
-            const leftNeighborHadAlt = hasPreventingAlternative(
-                leftNeighborHandBefore,
-                leftNeighborMove.boardBefore,
-                playersAtNeighborMove,
-                leftNeighbor,
-                0
-            );
-            
-            if (leftNeighborHadAlt) {
-                // ASSISTANT FOUND!
-                assistant = leftNeighbor;
-                updateScoresForIntentionalBlockWithAssist(blocker, assistant, gameState);
+            // STEP 1: Check for SELF-ASSISTED block (same player played consecutively)
+            if (playerWhoPlayedBefore === lastValidPlayer) {
+                // Player played multiple times in a row (others skipped)
+                // Check if they had alternatives on their EARLIER move
+                const earlierBoardBefore = secondLastMove.boardBefore;
+                
+                if (earlierBoardBefore && earlierBoardBefore.leftEnd) {
+                    const earlierHandBefore = [...players[lastValidPlayer], secondLastMove.playedTile];
+                    const playersAtEarlierMove = JSON.parse(JSON.stringify(players));
+                    
+                    // Add back tiles from last two moves
+                    for (let i = roundHistory.length - 2; i < roundHistory.length; i++) {
+                        const move = roundHistory[i];
+                        playersAtEarlierMove[move.player].push({...move.playedTile});
+                    }
+                    
+                    const earlierHadAlt = hasPreventingAlternative(
+                        earlierHandBefore,
+                        earlierBoardBefore,
+                        playersAtEarlierMove,
+                        lastValidPlayer,
+                        0
+                    );
+                    
+                    if (earlierHadAlt) {
+                        // Player intentionally set up their own block
+                        // SELF-ASSISTED INTENTIONAL BLOCK = Solo Intentional Block
+                        updateScoresForIntentionalBlockNoAssist(blocker, gameState);
+                        renderGame(gameState);
+                        showNewGameButton();
+                        return;
+                    }
+                }
+                // If earlier move was forced, still treat as Solo Intentional Block
+                updateScoresForIntentionalBlockNoAssist(blocker, gameState);
                 renderGame(gameState);
                 showNewGameButton();
-                return; // TERMINATE - No further checks needed
+                return;
+            }
+            
+            // STEP 2: Check for regular ASSISTANT (immediate left neighbor)
+            const leftNeighbor = getPreviousPlayer(lastValidPlayer);
+            
+            if (playerWhoPlayedBefore === leftNeighbor) {
+                // Left neighbor played immediately before blocker
+                const assistantBoardBefore = secondLastMove.boardBefore;
+                
+                if (assistantBoardBefore && assistantBoardBefore.leftEnd) {
+                    const assistantHandBefore = [...players[leftNeighbor], secondLastMove.playedTile];
+                    const playersAtAssistantMove = JSON.parse(JSON.stringify(players));
+                    
+                    // Add back tiles from last two moves
+                    for (let i = roundHistory.length - 2; i < roundHistory.length; i++) {
+                        const move = roundHistory[i];
+                        playersAtAssistantMove[move.player].push({...move.playedTile});
+                    }
+                    
+                    const assistantHadAlt = hasPreventingAlternative(
+                        assistantHandBefore,
+                        assistantBoardBefore,
+                        playersAtAssistantMove,
+                        leftNeighbor,
+                        0
+                    );
+                    
+                    if (assistantHadAlt) {
+                        // Left neighbor had alternatives and set up the block
+                        // ASSISTANT FOUND!
+                        assistant = leftNeighbor;
+                        updateScoresForIntentionalBlockWithAssist(blocker, assistant, gameState);
+                        renderGame(gameState);
+                        showNewGameButton();
+                        return;
+                    }
+                }
             }
         }
         
-        // If we reach here: left neighbor NOT guilty (or didn't play)
-        // Execute Solo Intentional Block
+        // No assistant found (neither self nor left neighbor)
         updateScoresForIntentionalBlockNoAssist(blocker, gameState);
         renderGame(gameState);
         showNewGameButton();
-        return; // TERMINATE - No further checks needed
+        return;
     }
     
     // ============================================================================
@@ -1926,7 +1960,7 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
     // Now check who CAUSED the forced block
     // ============================================================================
     
-    // STEP 2: Check immediate previous player who actually played
+    // STEP 3: Check immediate previous player who actually played
     if (roundHistory.length >= 2) {
         const prevMove = roundHistory[roundHistory.length - 2];
         const prevPlayer = prevMove.player;
@@ -1942,7 +1976,6 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
                 playersAtPrev[move.player].push({...move.playedTile});
             }
             
-            // Check if prev player had NON-BLOCKING alternative
             const prevHadNonBlockingAlt = hasPreventingAlternative(
                 prevHandBefore,
                 prevBoardBefore,
@@ -1952,7 +1985,7 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
             );
             
             if (prevHadNonBlockingAlt) {
-                // Previous player FORCED the block
+                // Previous player had alternatives and caused a force block
                 blocker = prevPlayer;
                 updateScoresForIntentionalBlockNoAssist(blocker, gameState);
                 renderGame(gameState);
@@ -1962,7 +1995,7 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
         }
     }
     
-    // STEP 3: Check for remote blocker (2 moves back)
+    // STEP 4: Check for remote blocker (2 moves back)
     if (roundHistory.length >= 3) {
         const grandMove = roundHistory[roundHistory.length - 3];
         const grandPlayer = grandMove.player;
@@ -1987,7 +2020,6 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
             );
             
             if (grandHadPreventingAlt) {
-                // Remote blocker found
                 blocker = grandPlayer;
                 updateScoresForIntentionalBlockNoAssist(blocker, gameState);
                 renderGame(gameState);
@@ -1997,11 +2029,12 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
         }
     }
     
-    // STEP 4: No intentional blocker found - Force Block
+    // STEP 5: No intentional blocker found - Force Block
     updateScoresForForceBlock(gameState);
     renderGame(gameState);
     showNewGameButton();
 }
+
 
 function getPlayerNumber(index) {
     return index + 1;
