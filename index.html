@@ -1224,20 +1224,21 @@ function computePlayerValues(players) {
       let pips = tile.top + tile.bottom;
 
       if (pips === 0) {
-        // Check if ANY player (including self) has a tile with 0
-        let anyHasZero = false;
+        // Check if ANY player (including self) has a tile with 0, excluding [0-0] itself
+        let anyHasZeroExcludingDoubleZero = false;
         for (let op = 0; op < 4; op++) {
           for (let otile of players[op]) {
-            if (otile.top === 0 || otile.bottom === 0) {
-              anyHasZero = true;
+            // Check if tile has 0 but is NOT [0-0]
+            if ((otile.top === 0 || otile.bottom === 0) && !(otile.top === 0 && otile.bottom === 0)) {
+              anyHasZeroExcludingDoubleZero = true;
               break;
             }
           }
-          if (anyHasZero) break;
+          if (anyHasZeroExcludingDoubleZero) break;
         }
 
         // Adjust pips accordingly
-        pips = anyHasZero ? 0 : 13;
+        pips = anyHasZeroExcludingDoubleZero ? 0 : 13;
       }
 
       sum += pips;
@@ -2766,3 +2767,4 @@ function renderGame(gameState) {
 </body>
 
 </html>
+
