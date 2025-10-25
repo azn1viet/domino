@@ -927,7 +927,7 @@ playerOptions.forEach(option => {
   });
 });
 
-// Start button uses selectedPlayers (no hardcoded 2 or 4)
+/*// Start button uses selectedPlayers (no hardcoded 2 or 4)
 startGameBtn.addEventListener('click', () => {
   // Use the currently selected value
   const playersCount = selectedPlayers || 4;
@@ -936,7 +936,7 @@ startGameBtn.addEventListener('click', () => {
   const gameState = createNewGameState(playersCount); // implement this
   modal.classList.add('hidden'); // hide modal
   renderGame(gameState); // render your game using playersCount
-});
+});*/
 
 
     startGameBtn.addEventListener('click', () => {
@@ -2764,4 +2764,5 @@ function renderGame(gameState) {
     }
   </script>
 </body>
+
 </html>
