@@ -830,7 +830,7 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 2.0.0</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 2.0.1</div>
 
   <script>
   // PWA Install Script
@@ -926,17 +926,6 @@ playerOptions.forEach(option => {
     selectedPlayers = Number.isFinite(n) ? n : 4;
   });
 });
-
-/*// Start button uses selectedPlayers (no hardcoded 2 or 4)
-startGameBtn.addEventListener('click', () => {
-  // Use the currently selected value
-  const playersCount = selectedPlayers || 4;
-
-  // Example: create a fresh gameState using playersCount
-  const gameState = createNewGameState(playersCount); // implement this
-  modal.classList.add('hidden'); // hide modal
-  renderGame(gameState); // render your game using playersCount
-});*/
 
 
     startGameBtn.addEventListener('click', () => {
@@ -1215,6 +1204,7 @@ startGameBtn.addEventListener('click', () => {
       }
     });
 
+// Fixed computePlayerValues - [0-0] counts as 13 only if no other zero tiles exist (excluding [0-0] itself)
 function computePlayerValues(players) {
   const values = [];
   for (let p = 0; p < 4; p++) {
@@ -1224,7 +1214,7 @@ function computePlayerValues(players) {
       let pips = tile.top + tile.bottom;
 
       if (pips === 0) {
-        // Check if ANY player (including self) has a tile with 0, excluding [0-0] itself
+        // Check if ANY player (including self) has a tile with 0, EXCLUDING [0-0] itself
         let anyHasZeroExcludingDoubleZero = false;
         for (let op = 0; op < 4; op++) {
           for (let otile of players[op]) {
@@ -1249,7 +1239,6 @@ function computePlayerValues(players) {
 
   return values;
 }
-
 
     function simulatePlay(board, tile, end) {
       if (!board.leftEnd) {
@@ -2020,215 +2009,142 @@ function computePlayerValues(players) {
       showNewGameButton();
     }
 
-    function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedTile, lastPlayedEnd) {
-      gameState.gameOver = true;
-      const { players, board, roundHistory, playerOrder } = gameState;
+// Helper function to check if a player had alternatives that could avoid force block
+function hadAlternativeThatAvoidsBlock(playerIndex, boardBefore, handBefore, playersState, boneyard, playerOrder) {
+  // Get all valid moves for this player at that board state
+  const validMoves = getValidMoves(handBefore, boardBefore);
+  
+  if (validMoves.length <= 1) {
+    // No alternatives (0 or 1 move only)
+    return false;
+  }
 
-      const prevBoard = gameState.prevBoard;
-      if (!prevBoard) {
-        updateScoresForForceBlock(gameState);
-        renderGame(gameState);
-        showNewGameButton();
-        return;
-      }
+  // Check each alternative move
+  for (const move of validMoves) {
+    // Simulate playing this tile
+    const simBoard = simulatePlay(boardBefore, move.tile, move.end);
+    const simPlayers = JSON.parse(JSON.stringify(playersState));
+    
+    // Remove the played tile from simulated hand
+    const tileIdx = simPlayers[playerIndex].findIndex(t => 
+      t.top === move.tile.top && t.bottom === move.tile.bottom
+    );
+    simPlayers[playerIndex].splice(tileIdx, 1);
 
-      const lastPlayerHandBefore = [...players[lastValidPlayer], lastPlayedTile];
-      const playersAtLast = JSON.parse(JSON.stringify(players));
-      playersAtLast[lastValidPlayer].push({...lastPlayedTile});
-
-      const lastHadNonBlockingAlt = hasPreventingAlternative(
-        lastPlayerHandBefore,
-        prevBoard,
-        playersAtLast,
-        lastValidPlayer,
-        0
-      );
-
-      let blocker = lastValidPlayer;
-      let assistant = -1;
-
-      if (lastHadNonBlockingAlt) {
-        if (roundHistory.length >= 2) {
-          const secondLastMove = roundHistory[roundHistory.length - 2];
-          const playerWhoPlayedBefore = secondLastMove.player;
-
-          if (playerWhoPlayedBefore === lastValidPlayer) {
-            if (roundHistory.length >= 3) {
-              const thirdLastMove = roundHistory[roundHistory.length - 3];
-              const playerBeforeSelfAssist = thirdLastMove.player;
-              const leftNeighbor = getPreviousPlayer(lastValidPlayer, playerOrder);
-
-              if (playerBeforeSelfAssist === leftNeighbor) {
-                const setupBoardBefore = thirdLastMove.boardBefore;
-
-                if (setupBoardBefore && setupBoardBefore.leftEnd) {
-                  const setupHandBefore = [...players[leftNeighbor], thirdLastMove.playedTile];
-                  const playersAtSetup = JSON.parse(JSON.stringify(players));
-
-                  for (let i = roundHistory.length - 3; i < roundHistory.length; i++) {
-                    const move = roundHistory[i];
-                    playersAtSetup[move.player].push({...move.playedTile});
-                  }
-
-                  const setupHadAlt = hasPreventingAlternative(
-                    setupHandBefore,
-                    setupBoardBefore,
-                    playersAtSetup,
-                    leftNeighbor,
-                    0
-                  );
-
-                  if (setupHadAlt) {
-                    assistant = leftNeighbor;
-                    updateScoresForIntentionalBlockWithAssist(blocker, assistant, gameState);
-                    renderGame(gameState);
-                    showNewGameButton();
-                    return;
-                  }
-                }
-              }
-            }
-
-            const earlierBoardBefore = secondLastMove.boardBefore;
-
-            if (earlierBoardBefore && earlierBoardBefore.leftEnd) {
-              const earlierHandBefore = [...players[lastValidPlayer], secondLastMove.playedTile];
-              const playersAtEarlierMove = JSON.parse(JSON.stringify(players));
-
-              for (let i = roundHistory.length - 2; i < roundHistory.length; i++) {
-                const move = roundHistory[i];
-                playersAtEarlierMove[move.player].push({...move.playedTile});
-              }
-
-              const earlierHadAlt = hasPreventingAlternative(
-                earlierHandBefore,
-                earlierBoardBefore,
-                playersAtEarlierMove,
-                lastValidPlayer,
-                0
-              );
-
-              if (earlierHadAlt) {
-                updateScoresForIntentionalBlockNoAssist(blocker, gameState);
-                renderGame(gameState);
-                showNewGameButton();
-                return;
-              }
-            }
-
-            updateScoresForIntentionalBlockNoAssist(blocker, gameState);
-            renderGame(gameState);
-            showNewGameButton();
-            return;
-          }
-
-          const leftNeighbor = getPreviousPlayer(lastValidPlayer, playerOrder);
-
-    if (playerWhoPlayedBefore === leftNeighbor) {
-            const assistantBoardBefore = secondLastMove.boardBefore;
-
-            if (assistantBoardBefore && assistantBoardBefore.leftEnd) {
-              const assistantHandBefore = [...players[leftNeighbor], secondLastMove.playedTile];
-              const playersAtAssistantMove = JSON.parse(JSON.stringify(players));
-
-              for (let i = roundHistory.length - 2; i < roundHistory.length; i++) {
-                const move = roundHistory[i];
-                playersAtAssistantMove[move.player].push({...move.playedTile});
-              }
-
-              const assistantHadAlt = hasPreventingAlternative(
-                assistantHandBefore,
-                assistantBoardBefore,
-                playersAtAssistantMove,
-                leftNeighbor,
-                0
-              );
-
-              if (assistantHadAlt) {
-                assistant = leftNeighbor;
-                updateScoresForIntentionalBlockWithAssist(blocker, assistant, gameState);
-                renderGame(gameState);
-                showNewGameButton();
-                return;
-              }
-            }
-          }
-        }
-
-        updateScoresForIntentionalBlockNoAssist(blocker, gameState);
-        renderGame(gameState);
-        showNewGameButton();
-        return;
-      }
-
-      if (roundHistory.length >= 2) {
-        const prevMove = roundHistory[roundHistory.length - 2];
-        const prevPlayer = prevMove.player;
-        const prevBoardBefore = prevMove.boardBefore;
-
-        if (prevBoardBefore && prevBoardBefore.leftEnd) {
-          const prevHandBefore = [...players[prevPlayer], prevMove.playedTile];
-          const playersAtPrev = JSON.parse(JSON.stringify(players));
-
-          for (let i = roundHistory.length - 2; i < roundHistory.length; i++) {
-            const move = roundHistory[i];
-            playersAtPrev[move.player].push({...move.playedTile});
-          }
-
-          const prevHadNonBlockingAlt = hasPreventingAlternative(
-            prevHandBefore,
-            prevBoardBefore,
-            playersAtPrev,
-            prevPlayer,
-            0
-          );
-
-          if (prevHadNonBlockingAlt) {
-            blocker = prevPlayer;
-            updateScoresForIntentionalBlockNoAssist(blocker, gameState);
-            renderGame(gameState);
-            showNewGameButton();
-            return;
-          }
-        }
-      }
-
-      if (roundHistory.length >= 3) {
-        const grandMove = roundHistory[roundHistory.length - 3];
-        const grandPlayer = grandMove.player;
-        const grandBoardBefore = grandMove.boardBefore;
-
-        if (grandBoardBefore && grandBoardBefore.leftEnd) {
-          const grandHandBefore = [...players[grandPlayer], grandMove.playedTile];
-          const playersAtGrand = JSON.parse(JSON.stringify(players));
-
-          for (let i = roundHistory.length - 3; i < roundHistory.length; i++) {
-            const move = roundHistory[i];
-            playersAtGrand[move.player].push({...move.playedTile});
-          }
-
-          const grandHadPreventingAlt = hasPreventingAlternative(
-            grandHandBefore,
-            grandBoardBefore,
-            playersAtGrand,
-            grandPlayer,
-            2
-          );
-
-          if (grandHadPreventingAlt) {
-            blocker = grandPlayer;
-            updateScoresForIntentionalBlockNoAssist(blocker, gameState);
-            renderGame(gameState);
-            showNewGameButton();
-            return;
-          }
-        }
-      }
-
-      updateScoresForForceBlock(gameState);
-      renderGame(gameState);
-      showNewGameButton();
+    // Check if this move leads to a playable state (not force block)
+    if (isPlayableForAnyone(simPlayers, boneyard, simBoard, playerOrder)) {
+      // Found an alternative that avoids force block
+      return true;
     }
+  }
+
+  // All alternatives also lead to force block
+  return false;
+}
+///new
+// Updated handleBlockedGame with remote block detection
+function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedTile, lastPlayedEnd) {
+  gameState.gameOver = true;
+  const { players, board, roundHistory, playerOrder, boneyard } = gameState;
+
+  const prevBoard = gameState.prevBoard;
+  if (!prevBoard) {
+    // Very first tile caused block (shouldn't happen, but handle it)
+    updateScoresForForceBlock(gameState);
+    renderGame(gameState);
+    showNewGameButton();
+    return;
+  }
+
+  // Reconstruct the last player's hand before they played
+  const lastPlayerHandBefore = [...players[lastValidPlayer], lastPlayedTile];
+  
+  // Reconstruct all players' state before last move
+  const playersAtLast = JSON.parse(JSON.stringify(players));
+  playersAtLast[lastValidPlayer].push({...lastPlayedTile});
+
+  // Check if last player had alternatives that could avoid block
+  const lastHadAvoidingAlt = hadAlternativeThatAvoidsBlock(
+    lastValidPlayer,
+    prevBoard,
+    lastPlayerHandBefore,
+    playersAtLast,
+    boneyard,
+    playerOrder
+  );
+
+  // If last player had alternatives and at least one avoids block → Intentional Block
+  if (lastHadAvoidingAlt) {
+    updateScoresForIntentionalBlockNoAssist(lastValidPlayer, gameState);
+    renderGame(gameState);
+    showNewGameButton();
+    return;
+  }
+
+  // Last player had no choice - check for REMOTE BLOCK (up to 3 moves back)
+  let remoteBlocker = -1;
+  const startIndex = roundHistory.length - 2; // Skip last move (already checked)
+  const endIndex = Math.max(0, roundHistory.length - 4); // Check up to 3 moves back
+
+  for (let i = startIndex; i >= endIndex; i--) {
+    const move = roundHistory[i];
+    const player = move.player;
+
+    // Skip if player is not in the game (empty seat)
+    if (!playerOrder.includes(player)) {
+      continue;
+    }
+
+    // Reconstruct this player's hand before they played
+    const handBefore = [...players[player], move.playedTile];
+    
+    // Reconstruct all players' state at this move
+    const playersAtThisMove = JSON.parse(JSON.stringify(players));
+    
+    // Add back all tiles played after this move (including this move)
+    for (let j = i; j < roundHistory.length; j++) {
+      const laterMove = roundHistory[j];
+      playersAtThisMove[laterMove.player].push({...laterMove.playedTile});
+    }
+
+    // Get the board state before this move
+    const boardBefore = move.boardBefore;
+    
+    if (!boardBefore || !boardBefore.leftEnd) {
+      // No board state to check (first move)
+      continue;
+    }
+
+    // Check if this player had alternatives that could avoid the force block
+    const hadAvoidingAlt = hadAlternativeThatAvoidsBlock(
+      player,
+      boardBefore,
+      handBefore,
+      playersAtThisMove,
+      boneyard,
+      playerOrder
+    );
+
+    if (hadAvoidingAlt) {
+      // Found the remote blocker!
+      remoteBlocker = player;
+      break; // Stop checking, found the culprit
+    }
+  }
+
+  // If we found a remote blocker, apply intentional block rules
+  if (remoteBlocker !== -1) {
+    updateScoresForIntentionalBlockNoAssist(remoteBlocker, gameState);
+    renderGame(gameState);
+    showNewGameButton();
+    return;
+  }
+
+  // No intentional or remote blocker found → True Force Block
+  updateScoresForForceBlock(gameState);
+  renderGame(gameState);
+  showNewGameButton();
+}
 
     function showNewGameButton() {
       const newGameBtn = document.getElementById('new-game');
@@ -2767,4 +2683,3 @@ function renderGame(gameState) {
 </body>
 
 </html>
-
