@@ -830,7 +830,7 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 2.0.1</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 2.0.2</div>
 
   <script>
   // PWA Install Script
@@ -2043,23 +2043,21 @@ function hadAlternativeThatAvoidsBlock(playerIndex, boardBefore, handBefore, pla
 }
 ///new
 // Updated handleBlockedGame with remote block detection
+// Complete handleBlockedGame with both intentional block assistant detection AND remote block detection
 function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedTile, lastPlayedEnd) {
   gameState.gameOver = true;
   const { players, board, roundHistory, playerOrder, boneyard } = gameState;
 
   const prevBoard = gameState.prevBoard;
   if (!prevBoard) {
-    // Very first tile caused block (shouldn't happen, but handle it)
     updateScoresForForceBlock(gameState);
     renderGame(gameState);
     showNewGameButton();
     return;
   }
 
-  // Reconstruct the last player's hand before they played
+  // Reconstruct last player's hand before they played
   const lastPlayerHandBefore = [...players[lastValidPlayer], lastPlayedTile];
-  
-  // Reconstruct all players' state before last move
   const playersAtLast = JSON.parse(JSON.stringify(players));
   playersAtLast[lastValidPlayer].push({...lastPlayedTile});
 
@@ -2073,15 +2071,59 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
     playerOrder
   );
 
-  // If last player had alternatives and at least one avoids block → Intentional Block
   if (lastHadAvoidingAlt) {
-    updateScoresForIntentionalBlockNoAssist(lastValidPlayer, gameState);
+    // Last player HAD avoiding alternatives → Intentional blocker
+    // Now check if previous player is assistant
+    let assistant = -1;
+    
+    if (roundHistory.length >= 2) {
+      const prevMove = roundHistory[roundHistory.length - 2];
+      const prevPlayer = prevMove.player;
+      
+      // Only check if previous player is in the game
+      if (playerOrder.includes(prevPlayer)) {
+        const prevHandBefore = [...players[prevPlayer], prevMove.playedTile];
+        const playersAtPrevMove = JSON.parse(JSON.stringify(players));
+        
+        // Add back tiles from previous move onwards
+        for (let j = roundHistory.length - 2; j < roundHistory.length; j++) {
+          const laterMove = roundHistory[j];
+          playersAtPrevMove[laterMove.player].push({...laterMove.playedTile});
+        }
+
+        const prevBoardBefore = prevMove.boardBefore;
+        
+        if (prevBoardBefore && prevBoardBefore.leftEnd) {
+          // Check if previous player had alternatives that would avoid setting up the block
+          const prevHadAvoidingAlt = hadAlternativeThatAvoidsBlock(
+            prevPlayer,
+            prevBoardBefore,
+            prevHandBefore,
+            playersAtPrevMove,
+            boneyard,
+            playerOrder
+          );
+          
+          if (prevHadAvoidingAlt) {
+            assistant = prevPlayer;
+          }
+        }
+      }
+    }
+
+    // Apply appropriate scoring for intentional block
+    if (assistant !== -1) {
+      updateScoresForIntentionalBlockWithAssist(lastValidPlayer, assistant, gameState);
+    } else {
+      updateScoresForIntentionalBlockNoAssist(lastValidPlayer, gameState);
+    }
+    
     renderGame(gameState);
     showNewGameButton();
     return;
   }
 
-  // Last player had no choice - check for REMOTE BLOCK (up to 3 moves back)
+  // Last player had NO avoiding alternatives → Check for remote blocker (up to 3 moves back)
   let remoteBlocker = -1;
   const startIndex = roundHistory.length - 2; // Skip last move (already checked)
   const endIndex = Math.max(0, roundHistory.length - 4); // Check up to 3 moves back
@@ -2146,6 +2188,109 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
   showNewGameButton();
 }
 
+// Keep existing helper functions (these don't need changes)
+function updateScoresForIntentionalBlockNoAssist(blocker, gameState) {
+  let values = computePlayerValues(gameState.players);
+  let blockerValue = values[blocker];
+  let othersValues = gameState.playerOrder.filter(p => p !== blocker).map(p => values[p]);
+  let minOthers = Math.min(...othersValues);
+  let totalTransfer = othersValues.reduce((a, b) => a + b, 0) * 2 * bet;
+  let message;
+  
+  if (blockerValue <= minOthers) {
+    // Blocker wins
+    for (let i of gameState.playerOrder) {
+      if (i !== blocker) {
+        let pay = 2 * values[i] * bet;
+        scores[i] -= pay;
+        scores[blocker] += pay;
+      }
+    }
+    message = `Player ${getPlayerNumber(blocker)} wins block!\n\n`;
+    message += `Player ${getPlayerNumber(blocker)} receives ${abbreviate(totalTransfer)}\n\n`;
+    for (let i of gameState.playerOrder) {
+      if (i !== blocker) {
+        let pay = 2 * values[i] * bet;
+        message += `Player ${getPlayerNumber(i)} pays ${abbreviate(pay)}\n`;
+      }
+    }
+  } else {
+    // Blocker loses
+    for (let i of gameState.playerOrder) {
+      if (i !== blocker) {
+        let pay = 2 * values[i] * bet;
+        scores[blocker] -= pay;
+        scores[i] += pay;
+      }
+    }
+    message = `Player ${getPlayerNumber(blocker)} loses block!\n\n`;
+    message += `Player ${getPlayerNumber(blocker)} pays ${abbreviate(totalTransfer)} total\n\n`;
+    for (let i of gameState.playerOrder) {
+      if (i !== blocker) {
+        let pay = 2 * values[i] * bet;
+        message += `Player ${getPlayerNumber(i)} receives ${abbreviate(pay)}\n`;
+      }
+    }
+  }
+  
+  nextGameStarter = blocker;
+  setTimeout(() => alert(message), 100);
+}
+
+function updateScoresForForceBlock(gameState) {
+  let values = computePlayerValues(gameState.players);
+  let minVal = Math.min(...gameState.playerOrder.map(p => values[p]));
+  let winners = [];
+  let losers = [];
+  
+  for (let i of gameState.playerOrder) {
+    if (values[i] === minVal) {
+      winners.push(i);
+    } else {
+      losers.push(i);
+    }
+  }
+
+  let message;
+  if (winners.length === gameState.playerOrder.length) {
+    // Everyone ties
+    message = `Force block! All players tie.\n\nNo payout.\nPlayer ${getPlayerNumber(nextGameStarter)} starts next game.`;
+    nextGameStarter = gameState.playerOrder[(gameState.playerOrder.indexOf(lastValidPlayer) + 1) % gameState.playerOrder.length];
+  } else {
+    let total_pot = 0;
+    losers.forEach(l => {
+      let pay = values[l] * bet;
+      scores[l] -= pay;
+      total_pot += pay;
+    });
+    let share = total_pot / winners.length;
+    winners.forEach(w => {
+      scores[w] += share;
+    });
+    
+    if (winners.length === 1) {
+      nextGameStarter = winners[0];
+      message = `Force block! Player ${getPlayerNumber(nextGameStarter)} has lowest hand.\n\n`;
+      message += `Player ${getPlayerNumber(nextGameStarter)} wins ${abbreviate(total_pot)}\n\n`;
+      losers.forEach(l => {
+        let pay = values[l] * bet;
+        message += `Player ${getPlayerNumber(l)} pays ${abbreviate(pay)}\n`;
+      });
+    } else {
+      nextGameStarter = gameState.playerOrder[(gameState.playerOrder.indexOf(lastValidPlayer) + 1) % gameState.playerOrder.length];
+      message = `Force block! Tie between: ${winners.map(w => `Player ${getPlayerNumber(w)}`).join(', ')}\n\n`;
+      message += `Winners share ${abbreviate(total_pot)} (${abbreviate(share)} each)\n\n`;
+      losers.forEach(l => {
+        let pay = values[l] * bet;
+        message += `Player ${getPlayerNumber(l)} pays ${abbreviate(pay)}\n`;
+      });
+    }
+  }
+  
+  setTimeout(() => alert(message), 100);
+}
+
+///
     function showNewGameButton() {
       const newGameBtn = document.getElementById('new-game');
       newGameBtn.style.display = 'block';
