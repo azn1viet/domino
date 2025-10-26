@@ -813,7 +813,7 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 3.0.1</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 3.0.2</div>
 
   <script>
   // PWA Install Script
@@ -1571,16 +1571,45 @@ function computePlayerValues(players) {
       return hasMultipleOptions && hasNonBlockingMove;
     }
 	///
-	
 function playAI(gameState) {
   const { players, board, roundHistory, isThisFirstGame, boneyard, playerOrder } = gameState;
   const playerHand = players[currentActivePlayerTurn];
-  const has_boneyard = playerOrder.length < 4; // 2 or 3 players have boneyard
+  const has_boneyard = playerOrder.length < 4;
 
-  // --- Drawing is automatic in playTile, but ensure it happens ---
-  // (drawUntilMatch is called in playTile for human, should work for AI too)
+  // ===== TILE COUNT & HAND VALUE ANALYSIS =====
+  const myTileCount = playerHand.length;
+  const opponentTileCounts = playerOrder
+    .filter(p => p !== currentActivePlayerTurn)
+    .map(p => players[p].length);
+  const minOpponentTiles = Math.min(...opponentTileCounts);
+  const tileCountDisadvantage = myTileCount - minOpponentTiles;
+  
+  const isInDanger = tileCountDisadvantage >= 2;
+  const isAtRisk = tileCountDisadvantage >= 1;
 
-  // --- START: Enforce highest double on first play for AI only in overall first game ---
+  const currentValues = computePlayerValues(players);
+  const myCurrentValue = currentValues[currentActivePlayerTurn];
+  const opponentValues = playerOrder.filter(p => p !== currentActivePlayerTurn).map(p => currentValues[p]);
+  const minOpponentValue = Math.min(...opponentValues);
+  const maxOpponentValue = Math.max(...opponentValues);
+
+  // ===== OPPONENT THREAT ASSESSMENT =====
+  // Identify which opponents are in WINNING POSITION (low hand value)
+  const opponentThreats = playerOrder
+    .filter(p => p !== currentActivePlayerTurn)
+    .map(p => ({
+      player: p,
+      tileCount: players[p].length,
+      handValue: currentValues[p],
+      isWinningPosition: currentValues[p] <= myCurrentValue
+    }));
+  
+  const hasWinningOpponent = opponentThreats.some(opp => opp.isWinningPosition);
+  const mostDangerousOpponent = opponentThreats
+    .filter(opp => opp.isWinningPosition)
+    .sort((a, b) => a.handValue - b.handValue)[0]; // Lowest hand = most dangerous
+
+  // Enforce highest double on first play
   if (!board.leftEnd && isThisFirstGame) {
     if (gameState.highestDouble && playerHand.some(t => t.top === gameState.highestDouble.top && t.bottom === gameState.highestDouble.bottom)) {
       const tileToPlay = playerHand.find(t => t.top === gameState.highestDouble.top && t.bottom === gameState.highestDouble.bottom);
@@ -1588,264 +1617,440 @@ function playAI(gameState) {
       return;
     }
   }
-  // --- END: Enforce highest double on first play for AI ---
 
   let bestMove = { tile: null, end: null, score: -Infinity };
   const validMoves = getValidMoves(playerHand, board);
 
-  if (validMoves.length === 0) {
-    return; // No valid moves
-  }
+  if (validMoves.length === 0) return;
 
-  // Different strategy for 2/3 vs 4 players
-  if (has_boneyard) {
-    // ============================================================
-    // 2/3 PLAYER STRATEGY (with boneyard/drawing)
-    // ============================================================
-    
-    // Calculate current hand values for blocking strategy
-    const currentValues = computePlayerValues(players);
-    const myCurrentValue = currentValues[currentActivePlayerTurn];
-    const opponentValues = playerOrder.filter(p => p !== currentActivePlayerTurn).map(p => currentValues[p]);
-    const minOpponentValue = Math.min(...opponentValues);
-    const maxOpponentValue = Math.max(...opponentValues);
+  for (const move of validMoves) {
+    let score = 0;
+    const { tile, end } = move;
 
-    for (const move of validMoves) {
-      let score = 0;
-      const { tile, end } = move;
+    const simBoard = simulatePlay(board, tile, end);
+    const simPlayers = JSON.parse(JSON.stringify(players));
+    const tileIndex = simPlayers[currentActivePlayerTurn].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
+    simPlayers[currentActivePlayerTurn].splice(tileIndex, 1);
 
-      const simBoard = simulatePlay(board, tile, end);
-      const simPlayers = JSON.parse(JSON.stringify(players));
-      const tileIndex = simPlayers[currentActivePlayerTurn].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
-      simPlayers[currentActivePlayerTurn].splice(tileIndex, 1);
+    // ===== PRIORITY 0: WINNING MOVE =====
+    if (simPlayers[currentActivePlayerTurn].length === 0) {
+      score = 1000000;
+      bestMove = { tile, end, score };
+      break;
+    }
 
-      // PRIORITY 1: Winning move (empty hand)
-      if (simPlayers[currentActivePlayerTurn].length === 0) {
-        score = 1000000;
-        bestMove = { tile, end, score };
-        break;
+    const simValues = computePlayerValues(simPlayers);
+    const mySimValue = simValues[currentActivePlayerTurn];
+
+    // ===== EVALUATE BLOCKING SCENARIOS =====
+    const isBlock = !isPlayableForAnyone(simPlayers, boneyard, simBoard, playerOrder);
+    const boneyardEmpty = has_boneyard ? boneyard.length === 0 : true;
+
+    if (isBlock && boneyardEmpty) {
+      const simOpponentValues = playerOrder.filter(p => p !== currentActivePlayerTurn).map(p => simValues[p]);
+      const minSimOpponent = Math.min(...simOpponentValues);
+
+      if (mySimValue <= minSimOpponent) {
+        // I would WIN this block (2x payout)
+        score += 8000;
+        const valueDifference = minSimOpponent - mySimValue;
+        score += valueDifference * 100;
+      } else {
+        // I would LOSE this block (pay 2x) - AVOID AT ALL COSTS!
+        score -= 20000;
+        const valueDifference = mySimValue - minSimOpponent;
+        score -= valueDifference * 100;
       }
+    }
 
-      // Calculate simulated hand values after this move
-      const simValues = computePlayerValues(simPlayers);
-      const mySimValue = simValues[currentActivePlayerTurn];
-
-      // PRIORITY 2: BLOCKING STRATEGY (specific to 2/3 players)
-      const isBlock = !isPlayableForAnyone(simPlayers, boneyard, simBoard, playerOrder);
+    // ===== PRIORITY BRANCHING: DANGER MODE vs NORMAL MODE =====
+    
+    if (isInDanger || isAtRisk) {
+      // =========================================================
+      // DANGER MODE: I have MORE tiles than opponents
+      // Goal: Dump points BUT still prevent opponent big wins
+      // =========================================================
       
-      if (isBlock && boneyard.length === 0) {
-        // This move causes a block with no boneyard left
-        const simOpponentValues = playerOrder.filter(p => p !== currentActivePlayerTurn).map(p => simValues[p]);
-        const minSimOpponent = Math.min(...simOpponentValues);
-
-        if (mySimValue <= minSimOpponent) {
-          // I WOULD WIN the block (lowest hand value) → WIN 2x from all opponents
-          // This is VERY valuable!
-          score += 8000; // Strong incentive to block when winning
+      let tileValue = tile.top + tile.bottom;
+      
+      // Base dumping incentive
+      if (isInDanger) {
+        score += tileValue * 150; // Reduced from 200 to allow threat prevention
+        if (tileValue >= 10) score += 2500; // Reduced from 3000
+        if (tileValue >= 9) score += 1500;  // Reduced from 2000
+        if (tileValue >= 8) score += 800;   // Reduced from 1000
+      } else if (isAtRisk) {
+        score += tileValue * 80;  // Reduced from 100
+        if (tileValue >= 9) score += 1500;
+        if (tileValue >= 7) score += 800;
+        if (tileValue >= 5) score += 400;
+      }
+      
+      // === CRITICAL: PREVENT OPPONENT WINNING BLOCKS EVEN IN DANGER MODE ===
+      if (!isBlock && hasWinningOpponent) {
+        // Check each opponent who's in winning position
+        for (const opponent of opponentThreats.filter(o => o.isWinningPosition)) {
+          const oppPlayer = opponent.player;
+          const oppHand = simPlayers[oppPlayer];
+          const oppMoves = getValidMoves(oppHand, simBoard);
           
-          // Extra bonus if my hand value is significantly lower
-          const valueDifference = minSimOpponent - mySimValue;
-          score += valueDifference * 100;
-        } else {
-          // I WOULD LOSE the block (not lowest) → PAY 2x to others
-          // This is VERY bad!
-          score -= 12000; // Strong penalty to avoid losing block
-          
-          // Extra penalty if my hand value is significantly higher
-          const valueDifference = mySimValue - minSimOpponent;
-          score -= valueDifference * 100;
-        }
-      } else if (!isBlock) {
-        // Normal play (no block) - check blocking potential for next player
-        
-        // PRIORITY 3: PREVENT OPPONENT FROM WINNING BLOCK
-        // Check if next player could block and win after this move
-        const nextPlayerIndex = (playerOrder.indexOf(currentActivePlayerTurn) + 1) % playerOrder.length;
-        const nextPlayer = playerOrder[nextPlayerIndex];
-        const nextPlayerHand = simPlayers[nextPlayer];
-        const nextPlayerMoves = getValidMoves(nextPlayerHand, simBoard);
-        
-        if (nextPlayerMoves.length > 0) {
-          // Check if next player could cause a winning block
-          let nextPlayerCouldWinBlock = false;
-          
-          for (const nextMove of nextPlayerMoves) {
-            const nextSimBoard = simulatePlay(simBoard, nextMove.tile, nextMove.end);
-            const nextSimPlayers = JSON.parse(JSON.stringify(simPlayers));
-            const nextTileIdx = nextSimPlayers[nextPlayer].findIndex(t => t.top === nextMove.tile.top && t.bottom === nextMove.tile.bottom);
-            nextSimPlayers[nextPlayer].splice(nextTileIdx, 1);
+          if (oppMoves.length > 0) {
+            let oppCouldWinBlock = false;
             
-            const nextIsBlock = !isPlayableForAnyone(nextSimPlayers, boneyard, nextSimBoard, playerOrder);
-            
-            if (nextIsBlock && boneyard.length === 0) {
-              // Next player could cause a block
-              const nextSimValues = computePlayerValues(nextSimPlayers);
-              const nextPlayerValue = nextSimValues[nextPlayer];
-              const othersValues = playerOrder.filter(p => p !== nextPlayer).map(p => nextSimValues[p]);
-              const minOthers = Math.min(...othersValues);
+            for (const oppMove of oppMoves) {
+              const oppSimBoard = simulatePlay(simBoard, oppMove.tile, oppMove.end);
+              const oppSimPlayers = JSON.parse(JSON.stringify(simPlayers));
+              const oppTileIdx = oppSimPlayers[oppPlayer].findIndex(t => 
+                t.top === oppMove.tile.top && t.bottom === oppMove.tile.bottom
+              );
+              oppSimPlayers[oppPlayer].splice(oppTileIdx, 1);
               
-              if (nextPlayerValue <= minOthers) {
-                // Next player would WIN the block (bad for us!)
-                nextPlayerCouldWinBlock = true;
-                break;
-              }
-            }
-          }
-          
-          if (nextPlayerCouldWinBlock) {
-            // This move allows next player to win a block - AVOID IT!
-            score -= 6000;
-          }
-        }
-        
-        // PRIORITY 4: ASSIST OPPONENT TO LOSE BLOCK (trap strategy)
-        // If I have low value and opponent has high value, help them block so they lose 2x!
-        if (mySimValue < minOpponentValue) {
-          // I have lower value than all opponents
-          // Check if this move could lead to opponent blocking (and losing)
-          const nextPlayerIndex = (playerOrder.indexOf(currentActivePlayerTurn) + 1) % playerOrder.length;
-          const nextPlayer = playerOrder[nextPlayerIndex];
-          const nextPlayerHand = simPlayers[nextPlayer];
-          const nextPlayerMoves = getValidMoves(nextPlayerHand, simBoard);
-          
-          if (nextPlayerMoves.length > 0) {
-            let nextPlayerCouldLoseBlock = false;
-            
-            for (const nextMove of nextPlayerMoves) {
-              const nextSimBoard = simulatePlay(simBoard, nextMove.tile, nextMove.end);
-              const nextSimPlayers = JSON.parse(JSON.stringify(simPlayers));
-              const nextTileIdx = nextSimPlayers[nextPlayer].findIndex(t => t.top === nextMove.tile.top && t.bottom === nextMove.tile.bottom);
-              nextSimPlayers[nextPlayer].splice(nextTileIdx, 1);
+              const oppIsBlock = !isPlayableForAnyone(oppSimPlayers, boneyard, oppSimBoard, playerOrder);
               
-              const nextIsBlock = !isPlayableForAnyone(nextSimPlayers, boneyard, nextSimBoard, playerOrder);
-              
-              if (nextIsBlock && boneyard.length === 0) {
-                const nextSimValues = computePlayerValues(nextSimPlayers);
-                const nextPlayerValue = nextSimValues[nextPlayer];
-                const othersValues = playerOrder.filter(p => p !== nextPlayer).map(p => nextSimValues[p]);
+              if (oppIsBlock && boneyardEmpty) {
+                const oppSimValues = computePlayerValues(oppSimPlayers);
+                const oppValue = oppSimValues[oppPlayer];
+                const othersValues = playerOrder.filter(p => p !== oppPlayer).map(p => oppSimValues[p]);
                 const minOthers = Math.min(...othersValues);
                 
-                if (nextPlayerValue > minOthers) {
-                  // Next player would LOSE the block (good for us!)
-                  nextPlayerCouldLoseBlock = true;
+                if (oppValue <= minOthers) {
+                  // This opponent could WIN a block (2x from everyone including me!)
+                  oppCouldWinBlock = true;
                   break;
                 }
               }
             }
             
-            if (nextPlayerCouldLoseBlock) {
-              // This move sets up opponent to lose a block - GOOD!
-              score += 4000; // Encourage trap strategy
+            if (oppCouldWinBlock) {
+              // CRITICAL: Even in danger mode, preventing opponent 2x win is crucial
+              // This opponent would take 2x MY hand value!
+              const myLoss = 2 * mySimValue * bet;
+              const threatLevel = isInDanger ? 0.7 : 0.85; // Reduce threat weight in emergency
+              score -= 6000 * threatLevel; // Still strong penalty but scaled
             }
           }
         }
+      }
+      
+      // === CHECK FOR REMOTE BLOCKING THREATS ===
+      // If opponent could set up a winning block 2-3 moves ahead
+      if (!isBlock && mostDangerousOpponent) {
+        // Simplified remote threat check (1 level deep)
+        const nextPlayerIdx = (playerOrder.indexOf(currentActivePlayerTurn) + 1) % playerOrder.length;
+        const nextPlayer = playerOrder[nextPlayerIdx];
         
-        // PRIORITY 5: Play high-value tiles first (reduce hand value)
-        let tileValue = tile.top + tile.bottom;
-        if (isDouble(tile)) {
-          tileValue += 5;
+        if (nextPlayer === mostDangerousOpponent.player) {
+          // Next player is the dangerous opponent
+          const nextHand = simPlayers[nextPlayer];
+          const nextMoves = getValidMoves(nextHand, simBoard);
+          
+          let remoteBlockThreat = false;
+          for (const nextMove of nextMoves) {
+            const nextSimBoard = simulatePlay(simBoard, nextMove.tile, nextMove.end);
+            const nextSimPlayers = JSON.parse(JSON.stringify(simPlayers));
+            const nextTileIdx = nextSimPlayers[nextPlayer].findIndex(t => 
+              t.top === nextMove.tile.top && t.bottom === nextMove.tile.bottom
+            );
+            nextSimPlayers[nextPlayer].splice(nextTileIdx, 1);
+            
+            // Check if this leads to future block opportunities
+            const stillPlayable = isPlayableForAnyone(nextSimPlayers, boneyard, nextSimBoard, playerOrder);
+            if (!stillPlayable && boneyardEmpty) {
+              const nextSimValues = computePlayerValues(nextSimPlayers);
+              const nextOppValue = nextSimValues[nextPlayer];
+              const othersVals = playerOrder.filter(p => p !== nextPlayer).map(p => nextSimValues[p]);
+              const minOthers = Math.min(...othersVals);
+              
+              if (nextOppValue <= minOthers) {
+                remoteBlockThreat = true;
+                break;
+              }
+            }
+          }
+          
+          if (remoteBlockThreat) {
+            score -= 3000; // Moderate penalty for remote threat
+          }
         }
-        score += tileValue * 30;
+      }
+      
+    } else {
+      // =========================================================
+      // NORMAL MODE: Tile counts equal or advantageous
+      // Full strategic play with all considerations
+      // =========================================================
+      
+      if (has_boneyard) {
+        // === 2/3 PLAYER STRATEGY ===
+        let tileValue = tile.top + tile.bottom;
+        if (isDouble(tile)) tileValue += 5;
         
-        // PRIORITY 6: Force opponent to draw (if boneyard still has tiles)
-        if (boneyard.length > 0) {
+        if (!isBlock) {
+          // === PREVENT OPPONENT WINNING BLOCKS ===
+          if (hasWinningOpponent) {
+            for (const opponent of opponentThreats.filter(o => o.isWinningPosition)) {
+              const oppPlayer = opponent.player;
+              const oppHand = simPlayers[oppPlayer];
+              const oppMoves = getValidMoves(oppHand, simBoard);
+              
+              if (oppMoves.length > 0) {
+                let oppCouldWinBlock = false;
+                
+                for (const oppMove of oppMoves) {
+                  const oppSimBoard = simulatePlay(simBoard, oppMove.tile, oppMove.end);
+                  const oppSimPlayers = JSON.parse(JSON.stringify(simPlayers));
+                  const oppTileIdx = oppSimPlayers[oppPlayer].findIndex(t => 
+                    t.top === oppMove.tile.top && t.bottom === oppMove.tile.bottom
+                  );
+                  oppSimPlayers[oppPlayer].splice(oppTileIdx, 1);
+                  
+                  const oppIsBlock = !isPlayableForAnyone(oppSimPlayers, boneyard, oppSimBoard, playerOrder);
+                  
+                  if (oppIsBlock && boneyardEmpty) {
+                    const oppSimValues = computePlayerValues(oppSimPlayers);
+                    const oppValue = oppSimValues[oppPlayer];
+                    const othersValues = playerOrder.filter(p => p !== oppPlayer).map(p => oppSimValues[p]);
+                    const minOthers = Math.min(...othersValues);
+                    
+                    if (oppValue <= minOthers) {
+                      oppCouldWinBlock = true;
+                      break;
+                    }
+                  }
+                }
+                
+                if (oppCouldWinBlock) {
+                  score -= 7000; // Heavy penalty - opponent would win 2x
+                }
+              }
+            }
+          }
+          
+          // === TRAP STRATEGY: Assist opponent to LOSE block ===
+          if (mySimValue < minOpponentValue) {
+            const nextPlayerIndex = (playerOrder.indexOf(currentActivePlayerTurn) + 1) % playerOrder.length;
+            const nextPlayer = playerOrder[nextPlayerIndex];
+            const nextPlayerHand = simPlayers[nextPlayer];
+            const nextPlayerMoves = getValidMoves(nextPlayerHand, simBoard);
+            
+            if (nextPlayerMoves.length > 0) {
+              let nextPlayerCouldLoseBlock = false;
+              
+              for (const nextMove of nextPlayerMoves) {
+                const nextSimBoard = simulatePlay(simBoard, nextMove.tile, nextMove.end);
+                const nextSimPlayers = JSON.parse(JSON.stringify(simPlayers));
+                const nextTileIdx = nextSimPlayers[nextPlayer].findIndex(t => 
+                  t.top === nextMove.tile.top && t.bottom === nextMove.tile.bottom
+                );
+                nextSimPlayers[nextPlayer].splice(nextTileIdx, 1);
+                
+                const nextIsBlock = !isPlayableForAnyone(nextSimPlayers, boneyard, nextSimBoard, playerOrder);
+                
+                if (nextIsBlock && boneyardEmpty) {
+                  const nextSimValues = computePlayerValues(nextSimPlayers);
+                  const nextPlayerValue = nextSimValues[nextPlayer];
+                  const othersValues = playerOrder.filter(p => p !== nextPlayer).map(p => nextSimValues[p]);
+                  const minOthers = Math.min(...othersValues);
+                  
+                  if (nextPlayerValue > minOthers) {
+                    nextPlayerCouldLoseBlock = true;
+                    break;
+                  }
+                }
+              }
+              
+              if (nextPlayerCouldLoseBlock) {
+                score += 4500; // Good bonus - opponent pays 2x to me!
+              }
+            }
+          }
+          
+          // === TURN CONTINUITY (avoid drawing) ===
+          const tilesPlayableAfterThisMove = simPlayers[currentActivePlayerTurn].filter(t => 
+            canPlayTile(t, simBoard)
+          ).length;
+          const remainingTileCount = simPlayers[currentActivePlayerTurn].length;
+          const playabilityRatio = tilesPlayableAfterThisMove / remainingTileCount;
+          
+          score += playabilityRatio * 1000;
+          if (playabilityRatio >= 0.5) score += 800;
+          
+          const leftEndVal = simBoard.leftEnd.value;
+          const rightEndVal = simBoard.rightEnd.value;
+          
+          const tilesMatchingLeft = simPlayers[currentActivePlayerTurn].filter(t => 
+            t.top === leftEndVal || t.bottom === leftEndVal
+          ).length;
+          const tilesMatchingRight = simPlayers[currentActivePlayerTurn].filter(t => 
+            t.top === rightEndVal || t.bottom === rightEndVal
+          ).length;
+          
+          if (tilesMatchingLeft === 0 && tilesMatchingRight === 0) {
+            score -= 1500;
+          }
+          
+          const totalMatchingTiles = tilesMatchingLeft + tilesMatchingRight;
+          if (totalMatchingTiles === 1) score -= 800;
+          else if (totalMatchingTiles === 2) score -= 400;
+          else if (totalMatchingTiles >= 4) score += 300;
+          
+          if (leftEndVal === rightEndVal) score -= 200;
+          
+          // === HAND VALUE REDUCTION ===
+          score += tileValue * 30;
+          
+          // === FORCE OPPONENT TO DRAW ===
+          if (boneyard.length > 0) {
+            const nextPlayerIndex = (playerOrder.indexOf(currentActivePlayerTurn) + 1) % playerOrder.length;
+            const nextPlayerHand = players[playerOrder[nextPlayerIndex]];
+            if (!nextPlayerHand.some(t => canPlayTile(t, simBoard))) {
+              score += 200;
+            }
+          }
+          
+          // === RARE PIPS ===
+          const pipsCount = countAllPips(players, roundHistory);
+          score += (8 - pipsCount[leftEndVal]) * 8;
+          score += (8 - pipsCount[rightEndVal]) * 8;
+          
+          // === ENDGAME AGGRESSION ===
+          if (boneyard.length < 5) {
+            score += tileValue * 15;
+          }
+        }
+        
+      } else {
+        // === 4 PLAYER STRATEGY ===
+        
+        if (!isBlock) {
+          // === PREVENT OPPONENT WINNING BLOCKS ===
+          if (hasWinningOpponent) {
+            for (const opponent of opponentThreats.filter(o => o.isWinningPosition)) {
+              const oppPlayer = opponent.player;
+              const oppHand = simPlayers[oppPlayer];
+              const oppMoves = getValidMoves(oppHand, simBoard);
+              
+              if (oppMoves.length > 0) {
+                let oppCouldWinBlock = false;
+                
+                for (const oppMove of oppMoves) {
+                  const oppSimBoard = simulatePlay(simBoard, oppMove.tile, oppMove.end);
+                  const oppSimPlayers = JSON.parse(JSON.stringify(simPlayers));
+                  const oppTileIdx = oppSimPlayers[oppPlayer].findIndex(t => 
+                    t.top === oppMove.tile.top && t.bottom === oppMove.tile.bottom
+                  );
+                  oppSimPlayers[oppPlayer].splice(oppTileIdx, 1);
+                  
+                  const oppIsBlock = !isPlayableForAnyone(oppSimPlayers, boneyard, oppSimBoard, playerOrder);
+                  
+                  if (oppIsBlock) {
+                    const oppSimValues = computePlayerValues(oppSimPlayers);
+                    const oppValue = oppSimValues[oppPlayer];
+                    const othersValues = playerOrder.filter(p => p !== oppPlayer).map(p => oppSimValues[p]);
+                    const minOthers = Math.min(...othersValues);
+                    
+                    if (oppValue <= minOthers) {
+                      oppCouldWinBlock = true;
+                      break;
+                    }
+                  }
+                }
+                
+                if (oppCouldWinBlock) {
+                  score -= 7000; // Heavy penalty
+                }
+              }
+            }
+          }
+          
+          // === TURN CONTINUITY (avoid skipping) ===
+          const tilesPlayableAfterThisMove = simPlayers[currentActivePlayerTurn].filter(t => 
+            canPlayTile(t, simBoard)
+          ).length;
+          const remainingTileCount = simPlayers[currentActivePlayerTurn].length;
+          const playabilityRatio = tilesPlayableAfterThisMove / remainingTileCount;
+          
+          score += playabilityRatio * 1200;
+          if (playabilityRatio >= 0.6) score += 1000;
+          
+          const leftEndVal = simBoard.leftEnd.value;
+          const rightEndVal = simBoard.rightEnd.value;
+          
+          const tilesMatchingLeft = simPlayers[currentActivePlayerTurn].filter(t => 
+            t.top === leftEndVal || t.bottom === leftEndVal
+          ).length;
+          const tilesMatchingRight = simPlayers[currentActivePlayerTurn].filter(t => 
+            t.top === rightEndVal || t.bottom === rightEndVal
+          ).length;
+          
+          if (tilesMatchingLeft === 0 && tilesMatchingRight === 0) {
+            score -= 2000;
+          }
+          
+          const totalMatchingTiles = tilesMatchingLeft + tilesMatchingRight;
+          if (totalMatchingTiles === 1) score -= 1000;
+          else if (totalMatchingTiles === 2) score -= 500;
+          else if (totalMatchingTiles >= 5) score += 400;
+          
+          if (leftEndVal === rightEndVal) score -= 300;
+          
+          // === PIP DIVERSITY ===
+          const pipsInRemainingHand = new Set();
+          simPlayers[currentActivePlayerTurn].forEach(t => {
+            pipsInRemainingHand.add(t.top);
+            pipsInRemainingHand.add(t.bottom);
+          });
+          const pipDiversity = pipsInRemainingHand.size;
+          score += pipDiversity * 50;
+          
+          // === HAND VALUE REDUCTION ===
+          let tileValue = tile.top + tile.bottom;
+          if (isDouble(tile)) tileValue += 10;
+          score += tileValue * 10;
+
+          // === BLOCK NEXT PLAYER ===
           const nextPlayerIndex = (playerOrder.indexOf(currentActivePlayerTurn) + 1) % playerOrder.length;
           const nextPlayerHand = players[playerOrder[nextPlayerIndex]];
           if (!nextPlayerHand.some(t => canPlayTile(t, simBoard))) {
-            score += 200; // Good to force drawing
+            score += 200;
+          }
+
+          // === RARE PIPS ===
+          const pipsCount = countAllPips(players, roundHistory);
+          score += (8 - pipsCount[leftEndVal]) * 5;
+          score += (8 - pipsCount[rightEndVal]) * 5;
+        } else {
+          // Block scenario already handled above
+          const minValue = Math.min(...playerOrder.map(p => simValues[p]));
+
+          if (mySimValue <= minValue) {
+            let hadNonBlockingAlternative = false;
+            for (const otherMove of validMoves) {
+              if (otherMove.tile === move.tile && otherMove.end === move.end) continue;
+              const otherSimBoard = simulatePlay(board, otherMove.tile, otherMove.end);
+              const otherSimPlayers = JSON.parse(JSON.stringify(players));
+              const otherTileIndex = otherSimPlayers[currentActivePlayerTurn].findIndex(t => 
+                t.top === otherMove.tile.top && t.bottom === otherMove.tile.bottom
+              );
+              otherSimPlayers[currentActivePlayerTurn].splice(otherTileIndex, 1);
+              if (isPlayableForAnyone(otherSimPlayers, boneyard, otherSimBoard, playerOrder)) {
+                hadNonBlockingAlternative = true;
+                break;
+              }
+            }
+
+            if (hadNonBlockingAlternative) {
+              score += 5000;
+            } else {
+              score += 2500;
+            }
           }
         }
-        
-        // PRIORITY 7: Play rare pips
-        const pipsCount = countAllPips(players, roundHistory);
-        const leftEndVal = simBoard.leftEnd.value;
-        const rightEndVal = simBoard.rightEnd.value;
-        score += (8 - pipsCount[leftEndVal]) * 8;
-        score += (8 - pipsCount[rightEndVal]) * 8;
-        
-        // PRIORITY 8: Consider boneyard size (endgame factor)
-        if (boneyard.length < 5) {
-          // Near endgame: be more aggressive
-          score += tileValue * 15;
-        }
-      }
-
-      if (score > bestMove.score) {
-        bestMove = { tile, end, score };
       }
     }
 
-  } else {
-    // ============================================================
-    // 4 PLAYER STRATEGY (no boneyard - KEEP ORIGINAL LOGIC)
-    // ============================================================
-    for (const move of validMoves) {
-      let score = 0;
-      const { tile, end } = move;
-
-      const simBoard = simulatePlay(board, tile, end);
-      const simPlayers = JSON.parse(JSON.stringify(players));
-      const tileIndex = simPlayers[currentActivePlayerTurn].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
-      simPlayers[currentActivePlayerTurn].splice(tileIndex, 1);
-
-      if (simPlayers[currentActivePlayerTurn].length === 0) {
-        score = 1000000;
-        bestMove = { tile, end, score };
-        break;
-      }
-
-      const isBlock = !isPlayableForAnyone(simPlayers, boneyard, simBoard, playerOrder);
-
-      if (isBlock) {
-        const simValues = computePlayerValues(simPlayers);
-        const myValue = simValues[currentActivePlayerTurn];
-        const minValue = Math.min(...playerOrder.map(p => simValues[p]));
-
-        if (myValue <= minValue) {
-          let hadNonBlockingAlternative = false;
-          for (const otherMove of validMoves) {
-            if (otherMove.tile === move.tile && otherMove.end === move.end) continue;
-            const otherSimBoard = simulatePlay(board, otherMove.tile, otherMove.end);
-            const otherSimPlayers = JSON.parse(JSON.stringify(players));
-            const otherTileIndex = otherSimPlayers[currentActivePlayerTurn].findIndex(t => t.top === otherMove.tile.top && t.bottom === otherMove.tile.bottom);
-            otherSimPlayers[currentActivePlayerTurn].splice(otherTileIndex, 1);
-            if (isPlayableForAnyone(otherSimPlayers, boneyard, otherSimBoard, playerOrder)) {
-              hadNonBlockingAlternative = true;
-              break;
-            }
-          }
-
-          if (hadNonBlockingAlternative) {
-            score += 5000;
-          } else {
-            score += 2500;
-          }
-        } else {
-          score -= 10000;
-        }
-      } else {
-        let tileValue = tile.top + tile.bottom;
-        if (isDouble(tile)) {
-          tileValue += 10;
-        }
-        score += tileValue * 10;
-
-        const nextPlayerIndex = (playerOrder.indexOf(currentActivePlayerTurn) + 1) % playerOrder.length;
-        const nextPlayerHand = players[playerOrder[nextPlayerIndex]];
-        if (!nextPlayerHand.some(t => canPlayTile(t, simBoard))) {
-          score += 200;
-        }
-
-        const pipsCount = countAllPips(players, roundHistory);
-        const leftEndVal = simBoard.leftEnd.value;
-        const rightEndVal = simBoard.rightEnd.value;
-        score += (8 - pipsCount[leftEndVal]) * 5;
-        score += (8 - pipsCount[rightEndVal]) * 5;
-      }
-
-      if (score > bestMove.score) {
-        bestMove = { tile, end, score };
-      }
+    if (score > bestMove.score) {
+      bestMove = { tile, end, score };
     }
   }
 
@@ -1853,7 +2058,6 @@ function playAI(gameState) {
     playTile(gameState, bestMove.tile, bestMove.end);
   }
 }
-///
 ///
 
 // UPDATED handleTileClick function - use currentActivePlayerTurn
