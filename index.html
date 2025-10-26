@@ -830,7 +830,7 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 2.0.2</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 2.0.3</div>
 
   <script>
   // PWA Install Script
@@ -1658,206 +1658,210 @@ function computePlayerValues(players) {
       renderGame(gameState);
     }
 
-    function playTile(gameState, tile, end) {
-      const { players, board, roundHistory, isThisFirstGame, playerOrder, boneyard } = gameState;
-      const playerHand = players[currentPlayer];
-      const tileIndex = playerHand.findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
+  // Fixed playTile function - Add drawing tracking to roundHistory
+function playTile(gameState, tile, end) {
+  const { players, board, roundHistory, isThisFirstGame, playerOrder, boneyard } = gameState;
+  const playerHand = players[currentPlayer];
+  const tileIndex = playerHand.findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
 
-      if (tileIndex === -1 || !canPlayTile(tile, board)) {
-        alert("Invalid move!");
+  if (tileIndex === -1 || !canPlayTile(tile, board)) {
+    alert("Invalid move!");
+    return false;
+  }
+
+  if (board.tiles.length === 0 && isThisFirstGame) {
+    if (gameState.highestDouble) {
+      if (tile.top !== gameState.highestDouble.top || tile.bottom !== gameState.highestDouble.bottom) {
+        if (currentPlayer === 0) {
+          alert(`Must play the highest double [${gameState.highestDouble.top}-${gameState.highestDouble.bottom}] first!`);
+        }
         return false;
       }
-
-      if (board.tiles.length === 0 && isThisFirstGame) {
-        if (gameState.highestDouble) {
-          if (tile.top !== gameState.highestDouble.top || tile.bottom !== gameState.highestDouble.bottom) {
-            if (currentPlayer === 0) {
-              alert(`Must play the highest double [${gameState.highestDouble.top}-${gameState.highestDouble.bottom}] first!`);
-            }
-            return false;
-          }
-          if (currentPlayer !== playerOrder.find(p => players[p].some(t => t.top === gameState.highestDouble.top && t.bottom === gameState.highestDouble.bottom))) {
-            return false;
-          }
-        }
+      if (currentPlayer !== playerOrder.find(p => players[p].some(t => t.top === gameState.highestDouble.top && t.bottom === gameState.highestDouble.bottom))) {
+        return false;
       }
-
-      const { V_W, V_H, H_W, H_H, FULL, OFFSET } = getTileSizes();
-
-      gameState.prevBoard = board.leftEnd ? {
-        leftEnd: {...board.leftEnd},
-        rightEnd: {...board.rightEnd}
-      } : null;
-
-      const playedTile = playerHand.splice(tileIndex, 1)[0];
-
-      if (currentPlayer === 0) {
-        gameState.selectedIndex = -1;
-      }
-
-      if (roundHistory) {
-        roundHistory.push({
-          player: currentPlayer,
-          playedTile: {...playedTile},
-          end: end,
-          boardBefore: gameState.prevBoard
-        });
-      }
-
-      const tableDiv = document.getElementById('table');
-      const tableRect = tableDiv.getBoundingClientRect();
-
-      let x, y, isHorizontal, displayTop, displayBottom, displayLeft, displayRight;
-
-      const isFirst = board.tiles.length === 0;
-      let e, turnDir;
-      let isLeftChain = end === 'left';
-      turnDir = isLeftChain ? 'up' : 'down';
-
-      if (isFirst) {
-        const isFirstDouble = isDouble(playedTile);
-        if (isFirstDouble) {
-          isHorizontal = false;
-          x = tableRect.width / 2 - V_W / 2;
-          y = tableRect.height / 2 - V_H / 2;
-          displayTop = playedTile.top;
-          displayBottom = playedTile.bottom;
-          const centerX = x + V_W / 2;
-          const topY = y + OFFSET;
-          const bottomY = y + V_H - OFFSET;
-          board.leftEnd = { value: playedTile.top, x: centerX, y: topY, dir: 'left', openSide: 'up' };
-          board.rightEnd = { value: playedTile.bottom, x: centerX, y: bottomY, dir: 'right', openSide: 'down' };
-        } else {
-          x = tableRect.width / 2 - H_W / 2;
-          y = tableRect.height / 2 - H_H / 2;
-          isHorizontal = true;
-          displayTop = playedTile.bottom;
-          displayBottom = playedTile.top;
-          displayLeft = playedTile.top;
-          displayRight = playedTile.bottom;
-          board.leftEnd = { value: playedTile.top, x: x + OFFSET, y: y + OFFSET, dir: 'left', openSide: 'left' };
-          board.rightEnd = { value: playedTile.bottom, x: x + FULL - OFFSET, y: y + OFFSET, dir: 'right', openSide: 'right' };
-        }
-      } else {
-        e = (end === 'left') ? board.leftEnd : board.rightEnd;
-        const placement = calculatePlacement(board, end, tableRect, playedTile);
-        x = placement.x;
-        y = placement.y;
-        isHorizontal = placement.isHorizontal;
-        e.x = placement.nextEndX;
-        e.y = placement.nextEndY;
-		e.isVertical = placement.isVertical; // ← ADD THIS LINE
-
-
-        const oldValue = e.value;
-        let connectingValue, newEndValue;
-        if (tile.top === oldValue) {
-          connectingValue = tile.top;
-          newEndValue = tile.bottom;
-        } else {
-          connectingValue = tile.bottom;
-          newEndValue = tile.top;
-        }
-        e.value = newEndValue;
-
-        if (isHorizontal) {
-          if (e.dir === 'left') {
-            displayTop = connectingValue;
-            displayBottom = newEndValue;
-          } else {
-            displayTop = newEndValue;
-            displayBottom = connectingValue;
-          }
-        } else {
-          if (turnDir === 'up') {
-            displayTop = newEndValue;
-            displayBottom = connectingValue;
-          } else {
-            displayTop = connectingValue;
-            displayBottom = newEndValue;
-          }
-        }
-
-        if (placement.newHdir) {
-          e.dir = placement.newHdir;
-          e.openSide = placement.turnDir;
-        } else {
-          e.openSide = e.dir;
-        }
-      }
-
-      let tileData;
-      if (isHorizontal) {
-        displayLeft = displayBottom;
-        displayRight = displayTop;
-        tileData = { left: displayLeft, right: displayRight };
-      } else {
-        tileData = { top: displayTop, bottom: displayBottom };
-      }
-      const tileDiv = document.createElement('div');
-      tileDiv.className = 'table-tile';
-      if (isHorizontal) tileDiv.classList.add('horizontal');
-      tileDiv.innerHTML = generateTileSvg(isHorizontal, tileData);
-      tileDiv.style.left = `${x + board.offsetX}px`;
-      tileDiv.style.top = `${y + board.offsetY}px`;
-
-      tableDiv.appendChild(tileDiv);
-      board.tiles.push({ tile: { top: displayTop, bottom: displayBottom }, x, y, isHorizontal });
-
-      const pushedIndex = board.tiles.length - 1;
-      if (board.tiles.length === 1) {
-        board.leftEnd.tileIndex = pushedIndex;
-        board.rightEnd.tileIndex = pushedIndex;
-      } else {
-        if (end === 'left') {
-          board.leftEnd.tileIndex = pushedIndex;
-        } else {
-          board.rightEnd.tileIndex = pushedIndex;
-        }
-      }
-
-      playSound();
-      lastValidPlayer = currentPlayer;
-
-      if (playerHand.length === 0) {
-        handleNormalGameWin(gameState);
-        return true;
-      }
-
-      const currentIndex = playerOrder.indexOf(currentPlayer);
-      let firstSkipped = -1;
-      let checkedPlayers = 0;
-      let nextIndex = (currentIndex + 1) % playerOrder.length;
-      let nextPlayer = playerOrder[nextIndex];
-
-      drawUntilMatch(gameState, nextPlayer);
-      if (!players[nextPlayer].some(t => canPlayTile(t, board))) {
-        firstSkipped = nextPlayer;
-        checkedPlayers = 1;
-        nextIndex = (nextIndex + 1) % playerOrder.length;
-        nextPlayer = playerOrder[nextIndex];
-        drawUntilMatch(gameState, nextPlayer);
-        while (checkedPlayers < playerOrder.length && !players[nextPlayer].some(t => canPlayTile(t, board))) {
-          checkedPlayers++;
-          nextIndex = (nextIndex + 1) % playerOrder.length;
-          nextPlayer = playerOrder[nextIndex];
-          drawUntilMatch(gameState, nextPlayer);
-        }
-      }
-
-      if (checkedPlayers === playerOrder.length) {
-        handleBlockedGame(gameState, lastValidPlayer, firstSkipped, playedTile, end);
-        return true;
-      }
-
-      currentPlayer = nextPlayer;
-      renderGame(gameState);
-
-      if (!gameState.gameOver && currentPlayer !== 0) {
-        setTimeout(() => playAI(gameState), 1500);
-      }
-      return true;
     }
+  }
+
+  const { V_W, V_H, H_W, H_H, FULL, OFFSET } = getTileSizes();
+
+  gameState.prevBoard = board.leftEnd ? {
+    leftEnd: {...board.leftEnd},
+    rightEnd: {...board.rightEnd}
+  } : null;
+
+  const playedTile = playerHand.splice(tileIndex, 1)[0];
+
+  if (currentPlayer === 0) {
+    gameState.selectedIndex = -1;
+  }
+
+  // FIXED: Track tiles in hand before this move (for assistance detection)
+  const handBeforePlay = [...playerHand, playedTile];
+
+  if (roundHistory) {
+    roundHistory.push({
+      player: currentPlayer,
+      playedTile: {...playedTile},
+      end: end,
+      boardBefore: gameState.prevBoard,
+      handBeforePlay: handBeforePlay.map(t => ({...t})) // ADD THIS: Store hand before playing
+    });
+  }
+
+  const tableDiv = document.getElementById('table');
+  const tableRect = tableDiv.getBoundingClientRect();
+
+  let x, y, isHorizontal, displayTop, displayBottom, displayLeft, displayRight;
+
+  const isFirst = board.tiles.length === 0;
+  let e, turnDir;
+  let isLeftChain = end === 'left';
+  turnDir = isLeftChain ? 'up' : 'down';
+
+  if (isFirst) {
+    const isFirstDouble = isDouble(playedTile);
+    if (isFirstDouble) {
+      isHorizontal = false;
+      x = tableRect.width / 2 - V_W / 2;
+      y = tableRect.height / 2 - V_H / 2;
+      displayTop = playedTile.top;
+      displayBottom = playedTile.bottom;
+      const centerX = x + V_W / 2;
+      const topY = y + OFFSET;
+      const bottomY = y + V_H - OFFSET;
+      board.leftEnd = { value: playedTile.top, x: centerX, y: topY, dir: 'left', openSide: 'up' };
+      board.rightEnd = { value: playedTile.bottom, x: centerX, y: bottomY, dir: 'right', openSide: 'down' };
+    } else {
+      x = tableRect.width / 2 - H_W / 2;
+      y = tableRect.height / 2 - H_H / 2;
+      isHorizontal = true;
+      displayTop = playedTile.bottom;
+      displayBottom = playedTile.top;
+      displayLeft = playedTile.top;
+      displayRight = playedTile.bottom;
+      board.leftEnd = { value: playedTile.top, x: x + OFFSET, y: y + OFFSET, dir: 'left', openSide: 'left' };
+      board.rightEnd = { value: playedTile.bottom, x: x + FULL - OFFSET, y: y + OFFSET, dir: 'right', openSide: 'right' };
+    }
+  } else {
+    e = (end === 'left') ? board.leftEnd : board.rightEnd;
+    const placement = calculatePlacement(board, end, tableRect, playedTile);
+    x = placement.x;
+    y = placement.y;
+    isHorizontal = placement.isHorizontal;
+    e.x = placement.nextEndX;
+    e.y = placement.nextEndY;
+    e.isVertical = placement.isVertical;
+
+    const oldValue = e.value;
+    let connectingValue, newEndValue;
+    if (tile.top === oldValue) {
+      connectingValue = tile.top;
+      newEndValue = tile.bottom;
+    } else {
+      connectingValue = tile.bottom;
+      newEndValue = tile.top;
+    }
+    e.value = newEndValue;
+
+    if (isHorizontal) {
+      if (e.dir === 'left') {
+        displayTop = connectingValue;
+        displayBottom = newEndValue;
+      } else {
+        displayTop = newEndValue;
+        displayBottom = connectingValue;
+      }
+    } else {
+      if (turnDir === 'up') {
+        displayTop = newEndValue;
+        displayBottom = connectingValue;
+      } else {
+        displayTop = connectingValue;
+        displayBottom = newEndValue;
+      }
+    }
+
+    if (placement.newHdir) {
+      e.dir = placement.newHdir;
+      e.openSide = placement.turnDir;
+    } else {
+      e.openSide = e.dir;
+    }
+  }
+
+  let tileData;
+  if (isHorizontal) {
+    displayLeft = displayBottom;
+    displayRight = displayTop;
+    tileData = { left: displayLeft, right: displayRight };
+  } else {
+    tileData = { top: displayTop, bottom: displayBottom };
+  }
+  const tileDiv = document.createElement('div');
+  tileDiv.className = 'table-tile';
+  if (isHorizontal) tileDiv.classList.add('horizontal');
+  tileDiv.innerHTML = generateTileSvg(isHorizontal, tileData);
+  tileDiv.style.left = `${x + board.offsetX}px`;
+  tileDiv.style.top = `${y + board.offsetY}px`;
+
+  tableDiv.appendChild(tileDiv);
+  board.tiles.push({ tile: { top: displayTop, bottom: displayBottom }, x, y, isHorizontal });
+
+  const pushedIndex = board.tiles.length - 1;
+  if (board.tiles.length === 1) {
+    board.leftEnd.tileIndex = pushedIndex;
+    board.rightEnd.tileIndex = pushedIndex;
+  } else {
+    if (end === 'left') {
+      board.leftEnd.tileIndex = pushedIndex;
+    } else {
+      board.rightEnd.tileIndex = pushedIndex;
+    }
+  }
+
+  playSound();
+  lastValidPlayer = currentPlayer;
+
+  if (playerHand.length === 0) {
+    handleNormalGameWin(gameState);
+    return true;
+  }
+
+  const currentIndex = playerOrder.indexOf(currentPlayer);
+  let firstSkipped = -1;
+  let checkedPlayers = 0;
+  let nextIndex = (currentIndex + 1) % playerOrder.length;
+  let nextPlayer = playerOrder[nextIndex];
+
+  drawUntilMatch(gameState, nextPlayer);
+  if (!players[nextPlayer].some(t => canPlayTile(t, board))) {
+    firstSkipped = nextPlayer;
+    checkedPlayers = 1;
+    nextIndex = (nextIndex + 1) % playerOrder.length;
+    nextPlayer = playerOrder[nextIndex];
+    drawUntilMatch(gameState, nextPlayer);
+    while (checkedPlayers < playerOrder.length && !players[nextPlayer].some(t => canPlayTile(t, board))) {
+      checkedPlayers++;
+      nextIndex = (nextIndex + 1) % playerOrder.length;
+      nextPlayer = playerOrder[nextIndex];
+      drawUntilMatch(gameState, nextPlayer);
+    }
+  }
+
+  if (checkedPlayers === playerOrder.length) {
+    handleBlockedGame(gameState, lastValidPlayer, firstSkipped, playedTile, end);
+    return true;
+  }
+
+  currentPlayer = nextPlayer;
+  renderGame(gameState);
+
+  if (!gameState.gameOver && currentPlayer !== 0) {
+    setTimeout(() => playAI(gameState), 1500);
+  }
+  return true;
+}
 
     function getPreviousPlayer(p, playerOrder) {
       const idx = playerOrder.indexOf(p);
@@ -2008,9 +2012,9 @@ function computePlayerValues(players) {
       renderGame(gameState);
       showNewGameButton();
     }
-
-// Helper function to check if a player had alternatives that could avoid force block
+	
 function hadAlternativeThatAvoidsBlock(playerIndex, boardBefore, handBefore, playersState, boneyard, playerOrder) {
+
   // Get all valid moves for this player at that board state
   const validMoves = getValidMoves(handBefore, boardBefore);
   
@@ -2041,9 +2045,31 @@ function hadAlternativeThatAvoidsBlock(playerIndex, boardBefore, handBefore, pla
   // All alternatives also lead to force block
   return false;
 }
+///added
+function hadAlternativeThatAvoidsBlock(playerIndex, boardBefore, handBefore, playersState, boneyard, playerOrder) {
+  const validMoves = getValidMoves(handBefore, boardBefore);
+  
+  if (validMoves.length <= 1) {
+    return false;
+  }
+
+  for (const move of validMoves) {
+    const simBoard = simulatePlay(boardBefore, move.tile, move.end);
+    const simPlayers = JSON.parse(JSON.stringify(playersState));
+    
+    const tileIdx = simPlayers[playerIndex].findIndex(t => 
+      t.top === move.tile.top && t.bottom === move.tile.bottom
+    );
+    simPlayers[playerIndex].splice(tileIdx, 1);
+
+    if (isPlayableForAnyone(simPlayers, boneyard, simBoard, playerOrder)) {
+      return true;
+    }
+  }
+
+  return false;
+}
 ///new
-// Updated handleBlockedGame with remote block detection
-// Complete handleBlockedGame with both intentional block assistant detection AND remote block detection
 function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedTile, lastPlayedEnd) {
   gameState.gameOver = true;
   const { players, board, roundHistory, playerOrder, boneyard } = gameState;
@@ -2056,12 +2082,11 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
     return;
   }
 
-  // Reconstruct last player's hand before they played
-  const lastPlayerHandBefore = [...players[lastValidPlayer], lastPlayedTile];
+  const lastMove = roundHistory[roundHistory.length - 1];
+  const lastPlayerHandBefore = lastMove.handBeforePlay;
   const playersAtLast = JSON.parse(JSON.stringify(players));
   playersAtLast[lastValidPlayer].push({...lastPlayedTile});
 
-  // Check if last player had alternatives that could avoid block
   const lastHadAvoidingAlt = hadAlternativeThatAvoidsBlock(
     lastValidPlayer,
     prevBoard,
@@ -2072,29 +2097,21 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
   );
 
   if (lastHadAvoidingAlt) {
-    // Last player HAD avoiding alternatives → Intentional blocker
-    // Now check if previous player is assistant
     let assistant = -1;
     
     if (roundHistory.length >= 2) {
       const prevMove = roundHistory[roundHistory.length - 2];
       const prevPlayer = prevMove.player;
       
-      // Only check if previous player is in the game
-      if (playerOrder.includes(prevPlayer)) {
-        const prevHandBefore = [...players[prevPlayer], prevMove.playedTile];
+      if (playerOrder.includes(prevPlayer) && prevPlayer !== lastValidPlayer) {
+        const prevHandBefore = prevMove.handBeforePlay;
         const playersAtPrevMove = JSON.parse(JSON.stringify(players));
-        
-        // Add back tiles from previous move onwards
-        for (let j = roundHistory.length - 2; j < roundHistory.length; j++) {
-          const laterMove = roundHistory[j];
-          playersAtPrevMove[laterMove.player].push({...laterMove.playedTile});
-        }
+        playersAtPrevMove[prevPlayer].push({...prevMove.playedTile});
+        playersAtPrevMove[lastValidPlayer].push({...lastPlayedTile});
 
         const prevBoardBefore = prevMove.boardBefore;
         
         if (prevBoardBefore && prevBoardBefore.leftEnd) {
-          // Check if previous player had alternatives that would avoid setting up the block
           const prevHadAvoidingAlt = hadAlternativeThatAvoidsBlock(
             prevPlayer,
             prevBoardBefore,
@@ -2111,7 +2128,6 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
       }
     }
 
-    // Apply appropriate scoring for intentional block
     if (assistant !== -1) {
       updateScoresForIntentionalBlockWithAssist(lastValidPlayer, assistant, gameState);
     } else {
@@ -2123,41 +2139,32 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
     return;
   }
 
-  // Last player had NO avoiding alternatives → Check for remote blocker (up to 3 moves back)
   let remoteBlocker = -1;
-  const startIndex = roundHistory.length - 2; // Skip last move (already checked)
-  const endIndex = Math.max(0, roundHistory.length - 4); // Check up to 3 moves back
+  const startIndex = roundHistory.length - 2;
+  const endIndex = Math.max(0, roundHistory.length - 4);
 
   for (let i = startIndex; i >= endIndex; i--) {
     const move = roundHistory[i];
     const player = move.player;
 
-    // Skip if player is not in the game (empty seat)
     if (!playerOrder.includes(player)) {
       continue;
     }
 
-    // Reconstruct this player's hand before they played
-    const handBefore = [...players[player], move.playedTile];
-    
-    // Reconstruct all players' state at this move
+    const handBefore = move.handBeforePlay;
     const playersAtThisMove = JSON.parse(JSON.stringify(players));
     
-    // Add back all tiles played after this move (including this move)
     for (let j = i; j < roundHistory.length; j++) {
       const laterMove = roundHistory[j];
       playersAtThisMove[laterMove.player].push({...laterMove.playedTile});
     }
 
-    // Get the board state before this move
     const boardBefore = move.boardBefore;
     
     if (!boardBefore || !boardBefore.leftEnd) {
-      // No board state to check (first move)
       continue;
     }
 
-    // Check if this player had alternatives that could avoid the force block
     const hadAvoidingAlt = hadAlternativeThatAvoidsBlock(
       player,
       boardBefore,
@@ -2168,13 +2175,11 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
     );
 
     if (hadAvoidingAlt) {
-      // Found the remote blocker!
       remoteBlocker = player;
-      break; // Stop checking, found the culprit
+      break;
     }
   }
 
-  // If we found a remote blocker, apply intentional block rules
   if (remoteBlocker !== -1) {
     updateScoresForIntentionalBlockNoAssist(remoteBlocker, gameState);
     renderGame(gameState);
@@ -2182,7 +2187,6 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
     return;
   }
 
-  // No intentional or remote blocker found → True Force Block
   updateScoresForForceBlock(gameState);
   renderGame(gameState);
   showNewGameButton();
