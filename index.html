@@ -637,32 +637,34 @@
       box-shadow: 0 0 10px #0ff !important;
     }
 
-    #options-button {
-      position: fixed;
-      bottom: 10px;
-      left: 3px;
-      z-index: 100;
-      background: #444;
-      color: #add8e6;
-      border: 1px solid #0f0;
-      padding: 5px;
-      font-size: 14px;
-      cursor: pointer;
-      touch-action: manipulation;
-      user-select: none;
-      -webkit-tap-highlight-color: transparent;
-      pointer-events: auto;
-    }
+#options-button:active {
+  transform: scale(0.95); /* Immediate visual feedback */
+  background: #0a0;
+}
+
+#options-button {
+  position: fixed;
+  bottom: 10px;
+  left: 3px;
+  z-index: 100;
+  background: #444;
+  color: #add8e6;
+  border: 1px solid #0f0;
+  padding: 5px;
+  font-size: 14px;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  pointer-events: auto;
+  transition: all 0.1s ease; /* Smooth transition */
+}
 
     #options-button:hover {
       background: #0c0;
       transform: scale(1.05);
     }
 
-    #options-button:active {
-      transform: scale(0.97);
-      background: #0a0;
-    }
 
     #options-menu {
       position: fixed;
@@ -824,13 +826,12 @@
   <select id="bets">
     <option value="1000">1000</option>
     <option value="10000" selected>10000</option>
-    <option value="20000">20000</option>
     <option value="50000">50000</option>
     <option value="100000">100000</option>
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 2.0.5</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 3.0.0</div>
 
   <script>
   // PWA Install Script
@@ -1188,11 +1189,38 @@ function startNewGame() {
       document.getElementById('options-menu').style.display = 'none';
     });
 
-    document.getElementById('options-button').onclick = () => {
-      const menu = document.getElementById('options-menu');
-      menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
-    };
+// Options button - immediate response
+const optionsButton = document.getElementById('options-button');
+const optionsMenu = document.getElementById('options-menu');
 
+optionsButton.addEventListener('click', (e) => {
+  e.stopPropagation();
+  
+  // Toggle menu immediately
+  const isHidden = optionsMenu.style.display === 'none' || optionsMenu.style.display === '';
+  optionsMenu.style.display = isHidden ? 'block' : 'none';
+  
+  // Visual feedback
+  optionsButton.style.transform = 'scale(0.95)';
+  setTimeout(() => {
+    optionsButton.style.transform = 'scale(1)';
+  }, 100);
+});
+
+// Close button
+document.getElementById('close-options').addEventListener('click', (e) => {
+  e.stopPropagation();
+  optionsMenu.style.display = 'none';
+});
+
+// Close menu when clicking outside
+document.addEventListener('click', (e) => {
+  if (optionsMenu.style.display === 'block' && 
+      !optionsMenu.contains(e.target) && 
+      !optionsButton.contains(e.target)) {
+    optionsMenu.style.display = 'none';
+  }
+});
     document.getElementById('numPlayers').onchange = (e) => {
       numPlayersVar = parseInt(e.target.value);
       startNewGame();
@@ -1560,98 +1588,290 @@ function computePlayerValues(players) {
 
       return hasMultipleOptions && hasNonBlockingMove;
     }
-	function playAI(gameState) {
-      const { players, board, roundHistory, isThisFirstGame, playerOrder, boneyard } = gameState;
-      const playerHand = players[currentActivePlayerTurn];
+	///
+	
+function playAI(gameState) {
+  const { players, board, roundHistory, isThisFirstGame, boneyard, playerOrder } = gameState;
+  const playerHand = players[currentActivePlayerTurn];
+  const has_boneyard = playerOrder.length < 4; // 2 or 3 players have boneyard
 
-      drawUntilMatch(gameState, currentActivePlayerTurn);
+  // --- Drawing is automatic in playTile, but ensure it happens ---
+  // (drawUntilMatch is called in playTile for human, should work for AI too)
 
-      if (!board.leftEnd && isThisFirstGame) {
-        if (gameState.highestDouble && playerHand.some(t => t.top === gameState.highestDouble.top && t.bottom === gameState.highestDouble.bottom)) {
-          const tileToPlay = playerHand.find(t => t.top === gameState.highestDouble.top && t.bottom === gameState.highestDouble.bottom);
-          playTile(gameState, tileToPlay, 'right');
-          return;
-        }
+  // --- START: Enforce highest double on first play for AI only in overall first game ---
+  if (!board.leftEnd && isThisFirstGame) {
+    if (gameState.highestDouble && playerHand.some(t => t.top === gameState.highestDouble.top && t.bottom === gameState.highestDouble.bottom)) {
+      const tileToPlay = playerHand.find(t => t.top === gameState.highestDouble.top && t.bottom === gameState.highestDouble.bottom);
+      playTile(gameState, tileToPlay, 'right');
+      return;
+    }
+  }
+  // --- END: Enforce highest double on first play for AI ---
+
+  let bestMove = { tile: null, end: null, score: -Infinity };
+  const validMoves = getValidMoves(playerHand, board);
+
+  if (validMoves.length === 0) {
+    return; // No valid moves
+  }
+
+  // Different strategy for 2/3 vs 4 players
+  if (has_boneyard) {
+    // ============================================================
+    // 2/3 PLAYER STRATEGY (with boneyard/drawing)
+    // ============================================================
+    
+    // Calculate current hand values for blocking strategy
+    const currentValues = computePlayerValues(players);
+    const myCurrentValue = currentValues[currentActivePlayerTurn];
+    const opponentValues = playerOrder.filter(p => p !== currentActivePlayerTurn).map(p => currentValues[p]);
+    const minOpponentValue = Math.min(...opponentValues);
+    const maxOpponentValue = Math.max(...opponentValues);
+
+    for (const move of validMoves) {
+      let score = 0;
+      const { tile, end } = move;
+
+      const simBoard = simulatePlay(board, tile, end);
+      const simPlayers = JSON.parse(JSON.stringify(players));
+      const tileIndex = simPlayers[currentActivePlayerTurn].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
+      simPlayers[currentActivePlayerTurn].splice(tileIndex, 1);
+
+      // PRIORITY 1: Winning move (empty hand)
+      if (simPlayers[currentActivePlayerTurn].length === 0) {
+        score = 1000000;
+        bestMove = { tile, end, score };
+        break;
       }
 
-      let bestMove = { tile: null, end: null, score: -Infinity };
-      const validMoves = getValidMoves(playerHand, board);
+      // Calculate simulated hand values after this move
+      const simValues = computePlayerValues(simPlayers);
+      const mySimValue = simValues[currentActivePlayerTurn];
 
-      if (validMoves.length === 0) return;
+      // PRIORITY 2: BLOCKING STRATEGY (specific to 2/3 players)
+      const isBlock = !isPlayableForAnyone(simPlayers, boneyard, simBoard, playerOrder);
+      
+      if (isBlock && boneyard.length === 0) {
+        // This move causes a block with no boneyard left
+        const simOpponentValues = playerOrder.filter(p => p !== currentActivePlayerTurn).map(p => simValues[p]);
+        const minSimOpponent = Math.min(...simOpponentValues);
 
-      for (const move of validMoves) {
-        let score = 0;
-        const { tile, end } = move;
-
-        const simBoard = simulatePlay(board, tile, end);
-        const simPlayers = JSON.parse(JSON.stringify(players));
-        const tileIndex = simPlayers[currentActivePlayerTurn].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
-        simPlayers[currentActivePlayerTurn].splice(tileIndex, 1);
-
-        if (simPlayers[currentActivePlayerTurn].length === 0) {
-          score = 1000000;
-          bestMove = { tile, end, score };
-          break;
+        if (mySimValue <= minSimOpponent) {
+          // I WOULD WIN the block (lowest hand value) → WIN 2x from all opponents
+          // This is VERY valuable!
+          score += 8000; // Strong incentive to block when winning
+          
+          // Extra bonus if my hand value is significantly lower
+          const valueDifference = minSimOpponent - mySimValue;
+          score += valueDifference * 100;
+        } else {
+          // I WOULD LOSE the block (not lowest) → PAY 2x to others
+          // This is VERY bad!
+          score -= 12000; // Strong penalty to avoid losing block
+          
+          // Extra penalty if my hand value is significantly higher
+          const valueDifference = mySimValue - minSimOpponent;
+          score -= valueDifference * 100;
         }
-
-        const isBlock = !isPlayableForAnyone(simPlayers, boneyard, simBoard, playerOrder);
-
-        if (isBlock) {
-          const simValues = computePlayerValues(simPlayers);
-          const myValue = simValues[currentActivePlayerTurn];
-          const minValue = Math.min(...playerOrder.map(p => simValues[p]));
-
-          if (myValue <= minValue) {
-            let hadNonBlockingAlternative = false;
-            for (const otherMove of validMoves) {
-              if (otherMove.tile === move.tile && otherMove.end === move.end) continue;
-              const otherSimBoard = simulatePlay(board, otherMove.tile, otherMove.end);
-              const otherSimPlayers = JSON.parse(JSON.stringify(players));
-              const otherTileIndex = otherSimPlayers[currentActivePlayerTurn].findIndex(t => t.top === otherMove.tile.top && t.bottom === otherMove.tile.bottom);
-              otherSimPlayers[currentActivePlayerTurn].splice(otherTileIndex, 1);
-              if (isPlayableForAnyone(otherSimPlayers, boneyard, otherSimBoard, playerOrder)) {
-                hadNonBlockingAlternative = true;
+      } else if (!isBlock) {
+        // Normal play (no block) - check blocking potential for next player
+        
+        // PRIORITY 3: PREVENT OPPONENT FROM WINNING BLOCK
+        // Check if next player could block and win after this move
+        const nextPlayerIndex = (playerOrder.indexOf(currentActivePlayerTurn) + 1) % playerOrder.length;
+        const nextPlayer = playerOrder[nextPlayerIndex];
+        const nextPlayerHand = simPlayers[nextPlayer];
+        const nextPlayerMoves = getValidMoves(nextPlayerHand, simBoard);
+        
+        if (nextPlayerMoves.length > 0) {
+          // Check if next player could cause a winning block
+          let nextPlayerCouldWinBlock = false;
+          
+          for (const nextMove of nextPlayerMoves) {
+            const nextSimBoard = simulatePlay(simBoard, nextMove.tile, nextMove.end);
+            const nextSimPlayers = JSON.parse(JSON.stringify(simPlayers));
+            const nextTileIdx = nextSimPlayers[nextPlayer].findIndex(t => t.top === nextMove.tile.top && t.bottom === nextMove.tile.bottom);
+            nextSimPlayers[nextPlayer].splice(nextTileIdx, 1);
+            
+            const nextIsBlock = !isPlayableForAnyone(nextSimPlayers, boneyard, nextSimBoard, playerOrder);
+            
+            if (nextIsBlock && boneyard.length === 0) {
+              // Next player could cause a block
+              const nextSimValues = computePlayerValues(nextSimPlayers);
+              const nextPlayerValue = nextSimValues[nextPlayer];
+              const othersValues = playerOrder.filter(p => p !== nextPlayer).map(p => nextSimValues[p]);
+              const minOthers = Math.min(...othersValues);
+              
+              if (nextPlayerValue <= minOthers) {
+                // Next player would WIN the block (bad for us!)
+                nextPlayerCouldWinBlock = true;
                 break;
               }
             }
-
-            if (hadNonBlockingAlternative) {
-              score += 5000;
-            } else {
-              score += 2500;
+          }
+          
+          if (nextPlayerCouldWinBlock) {
+            // This move allows next player to win a block - AVOID IT!
+            score -= 6000;
+          }
+        }
+        
+        // PRIORITY 4: ASSIST OPPONENT TO LOSE BLOCK (trap strategy)
+        // If I have low value and opponent has high value, help them block so they lose 2x!
+        if (mySimValue < minOpponentValue) {
+          // I have lower value than all opponents
+          // Check if this move could lead to opponent blocking (and losing)
+          const nextPlayerIndex = (playerOrder.indexOf(currentActivePlayerTurn) + 1) % playerOrder.length;
+          const nextPlayer = playerOrder[nextPlayerIndex];
+          const nextPlayerHand = simPlayers[nextPlayer];
+          const nextPlayerMoves = getValidMoves(nextPlayerHand, simBoard);
+          
+          if (nextPlayerMoves.length > 0) {
+            let nextPlayerCouldLoseBlock = false;
+            
+            for (const nextMove of nextPlayerMoves) {
+              const nextSimBoard = simulatePlay(simBoard, nextMove.tile, nextMove.end);
+              const nextSimPlayers = JSON.parse(JSON.stringify(simPlayers));
+              const nextTileIdx = nextSimPlayers[nextPlayer].findIndex(t => t.top === nextMove.tile.top && t.bottom === nextMove.tile.bottom);
+              nextSimPlayers[nextPlayer].splice(nextTileIdx, 1);
+              
+              const nextIsBlock = !isPlayableForAnyone(nextSimPlayers, boneyard, nextSimBoard, playerOrder);
+              
+              if (nextIsBlock && boneyard.length === 0) {
+                const nextSimValues = computePlayerValues(nextSimPlayers);
+                const nextPlayerValue = nextSimValues[nextPlayer];
+                const othersValues = playerOrder.filter(p => p !== nextPlayer).map(p => nextSimValues[p]);
+                const minOthers = Math.min(...othersValues);
+                
+                if (nextPlayerValue > minOthers) {
+                  // Next player would LOSE the block (good for us!)
+                  nextPlayerCouldLoseBlock = true;
+                  break;
+                }
+              }
             }
-          } else {
-            score -= 10000;
+            
+            if (nextPlayerCouldLoseBlock) {
+              // This move sets up opponent to lose a block - GOOD!
+              score += 4000; // Encourage trap strategy
+            }
           }
-        } else {
-          let tileValue = tile.top + tile.bottom;
-          if (isDouble(tile)) {
-            tileValue += 10;
-          }
-          score += tileValue * 10;
-
+        }
+        
+        // PRIORITY 5: Play high-value tiles first (reduce hand value)
+        let tileValue = tile.top + tile.bottom;
+        if (isDouble(tile)) {
+          tileValue += 5;
+        }
+        score += tileValue * 30;
+        
+        // PRIORITY 6: Force opponent to draw (if boneyard still has tiles)
+        if (boneyard.length > 0) {
           const nextPlayerIndex = (playerOrder.indexOf(currentActivePlayerTurn) + 1) % playerOrder.length;
           const nextPlayerHand = players[playerOrder[nextPlayerIndex]];
           if (!nextPlayerHand.some(t => canPlayTile(t, simBoard))) {
-            score += 200;
+            score += 200; // Good to force drawing
           }
-
-          const pipsCount = countAllPips(players, roundHistory);
-          const leftEndVal = simBoard.leftEnd.value;
-          const rightEndVal = simBoard.rightEnd.value;
-          score += (8 - pipsCount[leftEndVal]) * 5;
-          score += (8 - pipsCount[rightEndVal]) * 5;
         }
-
-        if (score > bestMove.score) {
-          bestMove = { tile, end, score };
+        
+        // PRIORITY 7: Play rare pips
+        const pipsCount = countAllPips(players, roundHistory);
+        const leftEndVal = simBoard.leftEnd.value;
+        const rightEndVal = simBoard.rightEnd.value;
+        score += (8 - pipsCount[leftEndVal]) * 8;
+        score += (8 - pipsCount[rightEndVal]) * 8;
+        
+        // PRIORITY 8: Consider boneyard size (endgame factor)
+        if (boneyard.length < 5) {
+          // Near endgame: be more aggressive
+          score += tileValue * 15;
         }
       }
 
-      if (bestMove.tile) {
-        playTile(gameState, bestMove.tile, bestMove.end);
+      if (score > bestMove.score) {
+        bestMove = { tile, end, score };
       }
     }
+
+  } else {
+    // ============================================================
+    // 4 PLAYER STRATEGY (no boneyard - KEEP ORIGINAL LOGIC)
+    // ============================================================
+    for (const move of validMoves) {
+      let score = 0;
+      const { tile, end } = move;
+
+      const simBoard = simulatePlay(board, tile, end);
+      const simPlayers = JSON.parse(JSON.stringify(players));
+      const tileIndex = simPlayers[currentActivePlayerTurn].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
+      simPlayers[currentActivePlayerTurn].splice(tileIndex, 1);
+
+      if (simPlayers[currentActivePlayerTurn].length === 0) {
+        score = 1000000;
+        bestMove = { tile, end, score };
+        break;
+      }
+
+      const isBlock = !isPlayableForAnyone(simPlayers, boneyard, simBoard, playerOrder);
+
+      if (isBlock) {
+        const simValues = computePlayerValues(simPlayers);
+        const myValue = simValues[currentActivePlayerTurn];
+        const minValue = Math.min(...playerOrder.map(p => simValues[p]));
+
+        if (myValue <= minValue) {
+          let hadNonBlockingAlternative = false;
+          for (const otherMove of validMoves) {
+            if (otherMove.tile === move.tile && otherMove.end === move.end) continue;
+            const otherSimBoard = simulatePlay(board, otherMove.tile, otherMove.end);
+            const otherSimPlayers = JSON.parse(JSON.stringify(players));
+            const otherTileIndex = otherSimPlayers[currentActivePlayerTurn].findIndex(t => t.top === otherMove.tile.top && t.bottom === otherMove.tile.bottom);
+            otherSimPlayers[currentActivePlayerTurn].splice(otherTileIndex, 1);
+            if (isPlayableForAnyone(otherSimPlayers, boneyard, otherSimBoard, playerOrder)) {
+              hadNonBlockingAlternative = true;
+              break;
+            }
+          }
+
+          if (hadNonBlockingAlternative) {
+            score += 5000;
+          } else {
+            score += 2500;
+          }
+        } else {
+          score -= 10000;
+        }
+      } else {
+        let tileValue = tile.top + tile.bottom;
+        if (isDouble(tile)) {
+          tileValue += 10;
+        }
+        score += tileValue * 10;
+
+        const nextPlayerIndex = (playerOrder.indexOf(currentActivePlayerTurn) + 1) % playerOrder.length;
+        const nextPlayerHand = players[playerOrder[nextPlayerIndex]];
+        if (!nextPlayerHand.some(t => canPlayTile(t, simBoard))) {
+          score += 200;
+        }
+
+        const pipsCount = countAllPips(players, roundHistory);
+        const leftEndVal = simBoard.leftEnd.value;
+        const rightEndVal = simBoard.rightEnd.value;
+        score += (8 - pipsCount[leftEndVal]) * 5;
+        score += (8 - pipsCount[rightEndVal]) * 5;
+      }
+
+      if (score > bestMove.score) {
+        bestMove = { tile, end, score };
+      }
+    }
+  }
+
+  if (bestMove.tile) {
+    playTile(gameState, bestMove.tile, bestMove.end);
+  }
+}
+///
 ///
 
 // UPDATED handleTileClick function - use currentActivePlayerTurn
@@ -2727,6 +2947,25 @@ function renderGame(gameState) {
       }
     }
   });
+    // ADD THE BONEYARD CODE HERE (at the very end, before closing the function)
+  const boneyardDiv = document.getElementById('boneyard');
+  if (gameState.boneyard && gameState.boneyard.length > 0 && gameState.playerOrder.length < 4) {
+    boneyardDiv.style.display = 'block';
+    const tilesDiv = document.getElementById('boneyard-tiles');
+    tilesDiv.innerHTML = '';
+    for (let i = 0; i < gameState.boneyard.length; i++) {
+      const rect = document.createElement('div');
+      rect.style.width = '6px';
+      rect.style.height = '12px';
+      rect.style.background = 'black';
+      rect.style.border = '1px solid #222';
+      rect.style.borderRadius = '2px';
+      tilesDiv.appendChild(rect);
+    }
+  } else {
+    boneyardDiv.style.display = 'none';
+  }
+  
 }
  /// 
     function centerTilesOnResize() {
