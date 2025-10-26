@@ -192,20 +192,13 @@
     }
 	
 #table {
-  /* Use absolute positioning within the full-size #game-container */
   position: absolute;
-  /* Top/Left/Transform to center the reduced-size table */
-  top: 45%;
   left: 50%;
+  top: calc(50% - 50px);
   transform: translate(-50%, -50%);
-
-  /* Calculate max width and height to avoid player hands (approx. 100px each) */
-  width: 90%; 
-  height: calc(100% - 200px); /* 100% minus space for Player 1 (North) and Player 3 (South) */
   
-  /* Reset these from original 100% setting */
-  /* top: 0; */ 
-  /* left: 0; */
+  width: 90%;
+  height: calc(100% - 200px);
   
   display: block;
   pointer-events: all;
@@ -820,7 +813,7 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 3.0.0</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 3.0.1</div>
 
   <script>
   // PWA Install Script
