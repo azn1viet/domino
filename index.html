@@ -830,7 +830,7 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 2.0.3</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 2.0.4</div>
 
   <script>
   // PWA Install Script
@@ -872,7 +872,12 @@
       }
     });
   </script>
-
+<script>
+// Additional: Ensure bets is enabled initially (before first game start)
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('bets').disabled = false; // Enabled before any game starts
+});
+</script>
   <script>
     // Game Variables
     let audioContext = null;
@@ -886,10 +891,22 @@
     let draggedTile = null;
     let numPlayersVar = 4;
     let gameState = null;
-    let currentPlayer = 0;
+    let currentActivePlayerTurn = 0;
     let nextGameStarter = 0;
     let lastValidPlayer = 0;
-    let scores = [10000000, 10000000, 10000000, 10000000];
+    // Updated global variables and initialization
+let scores = [10000000, 10000000, 10000000, 10000000];
+
+// Load persisted data from localStorage
+const storedScores = localStorage.getItem('dominoScores');
+if (storedScores) {
+  scores = JSON.parse(storedScores);
+}
+const storedBet = localStorage.getItem('dominoBet');
+if (storedBet) {
+  bet = parseInt(storedBet, 10);
+}
+document.getElementById('bets').value = bet; // Sync select with loaded bet
 
     const tiles = [
       {top: 6, bottom: 6}, {top: 6, bottom: 5}, {top: 6, bottom: 4}, {top: 6, bottom: 3}, {top: 6, bottom: 2}, {top: 6, bottom: 1}, {top: 6, bottom: 0},
@@ -1118,10 +1135,10 @@ playerOptions.forEach(option => {
 
       const isThisFirstGame = isOverallFirstGame;
       if (isThisFirstGame) {
-        currentPlayer = starter;
+        currentActivePlayerTurn = starter;
         isOverallFirstGame = false;
       } else {
-        currentPlayer = nextGameStarter;
+        currentActivePlayerTurn = nextGameStarter;
       }
 
       const roundHistory = [];
@@ -1140,21 +1157,22 @@ playerOptions.forEach(option => {
       };
     }
 
-    function startNewGame() {
-      isOverallFirstGame = true;
-      currentPlayer = 0;
-      nextGameStarter = 0;
-      lastValidPlayer = 0;
-      scores = [10000000, 10000000, 10000000, 10000000];
-      
-      document.getElementById('new-game').style.display = 'none';
-      gameState = setupGame();
-      renderGame(gameState);
-      
-      if (!gameState.gameOver && currentPlayer !== 0) {
-        setTimeout(() => playAI(gameState), 1500);
-      }
-    }
+// Updated startNewGame function (remove scores reset to persist previous scores)
+function startNewGame() {
+  isOverallFirstGame = true;
+  currentActivePlayerTurn = 0;
+  nextGameStarter = 0;
+  lastValidPlayer = 0;
+  // Removed: scores = [10000000, 10000000, 10000000, 10000000]; // Persist previous scores
+  
+  document.getElementById('new-game').style.display = 'none';
+  gameState = setupGame();
+  renderGame(gameState);
+  
+  if (!gameState.gameOver && currentActivePlayerTurn !== 0) {
+    setTimeout(() => playAI(gameState), 1500);
+  }
+}
 
     document.getElementById('close-options').addEventListener('click', () => {
       document.getElementById('options-menu').style.display = 'none';
@@ -1190,9 +1208,11 @@ playerOptions.forEach(option => {
       funVoice = e.target.value === 'On';
     };
 
-    document.getElementById('bets').addEventListener('change', function(e) {
-      bet = parseInt(e.target.value);
-    });
+// Updated bets change listener (persists bet on change)
+document.getElementById('bets').addEventListener('change', function(e) {
+  bet = parseInt(e.target.value, 10);
+  localStorage.setItem('dominoBet', bet);
+});
 
     document.getElementById('sound').addEventListener('change', (e) => {
       if (e.target.value === 'Off') {
@@ -1203,307 +1223,7 @@ playerOptions.forEach(option => {
         soundLocked = false;
       }
     });
-
-// Fixed computePlayerValues - [0-0] counts as 13 only if no other zero tiles exist (excluding [0-0] itself)
-function computePlayerValues(players) {
-  const values = [];
-  for (let p = 0; p < 4; p++) {
-    let sum = 0;
-
-    for (let tile of players[p]) {
-      let pips = tile.top + tile.bottom;
-
-      if (pips === 0) {
-        // Check if ANY player (including self) has a tile with 0, EXCLUDING [0-0] itself
-        let anyHasZeroExcludingDoubleZero = false;
-        for (let op = 0; op < 4; op++) {
-          for (let otile of players[op]) {
-            // Check if tile has 0 but is NOT [0-0]
-            if ((otile.top === 0 || otile.bottom === 0) && !(otile.top === 0 && otile.bottom === 0)) {
-              anyHasZeroExcludingDoubleZero = true;
-              break;
-            }
-          }
-          if (anyHasZeroExcludingDoubleZero) break;
-        }
-
-        // Adjust pips accordingly
-        pips = anyHasZeroExcludingDoubleZero ? 0 : 13;
-      }
-
-      sum += pips;
-    }
-
-    values[p] = sum;
-  }
-
-  return values;
-}
-
-    function simulatePlay(board, tile, end) {
-      if (!board.leftEnd) {
-        return {
-          leftEnd: { value: tile.top },
-          rightEnd: { value: tile.bottom }
-        };
-      }
-
-      let simLeftEnd = { ...board.leftEnd };
-      let simRightEnd = { ...board.rightEnd };
-      if (end === 'left') {
-        const oldValue = simLeftEnd.value;
-        if (tile.top === oldValue) {
-          simLeftEnd.value = tile.bottom;
-        } else {
-          simLeftEnd.value = tile.top;
-        }
-      } else {
-        const oldValue = simRightEnd.value;
-        if (tile.top === oldValue) {
-          simRightEnd.value = tile.bottom;
-        } else {
-          simRightEnd.value = tile.top;
-        }
-      }
-      return { leftEnd: simLeftEnd, rightEnd: simRightEnd };
-    }
-
-    function isPlayableForAnyone(players, boneyard, board, playerOrder) {
-      if (!board.leftEnd) return true;
-      for (const p of playerOrder) {
-        if (players[p].some(tile => canPlayTile(tile, board))) {
-          return true;
-        }
-      }
-      if (boneyard.length === 0) return false;
-      const left = board.leftEnd.value;
-      const right = board.rightEnd.value;
-      return boneyard.some(tile => tile.top === left || tile.bottom === left || tile.top === right || tile.bottom === right);
-    }
-
-    function countAllPips(players, roundHistory) {
-      const counts = [0, 0, 0, 0, 0, 0, 0];
-      const allKnownTiles = [];
-      allKnownTiles.push(...players[currentPlayer]);
-      if (roundHistory) {
-        for (const move of roundHistory) {
-          allKnownTiles.push(move.playedTile);
-        }
-      }
-      for (const tile of allKnownTiles) {
-        counts[tile.top]++;
-        counts[tile.bottom]++;
-      }
-      return counts;
-    }
-
-    function getValidMoves(hand, board) {
-      const validMoves = [];
-      if (!board.leftEnd) {
-        hand.forEach(tile => validMoves.push({ tile, end: 'right' }));
-      } else {
-        hand.forEach(tile => {
-          const canLeft = canPlayOnEnd(tile, board.leftEnd.value);
-          const canRight = canPlayOnEnd(tile, board.rightEnd.value);
-          if (canLeft) {
-            validMoves.push({ tile, end: 'left' });
-          }
-          if (canRight) {
-            if (!isDouble(tile) || !canLeft) {
-              validMoves.push({ tile, end: 'right' });
-            }
-          }
-        });
-      }
-      return validMoves;
-    }
-
-    function drawUntilMatch(gameState, player) {
-      const { players, board, boneyard } = gameState;
-      const hand = players[player];
-      while (boneyard.length > 0 && getValidMoves(hand, board).length === 0) {
-        const idx = Math.floor(Math.random() * boneyard.length);
-        const drawn = boneyard.splice(idx, 1)[0];
-        hand.push(drawn);
-      }
-      if (player === 0 && hand.length > 0) {
-        const lastDrawn = hand[hand.length - 1];
-        if (canPlayTile(lastDrawn, board)) {
-          gameState.selectedIndex = hand.length - 1;
-        }
-      }
-    }
-
-    function isInevitableBlock(board, players, boneyard, currentPlayer, depth, maxDepth, playerOrder) {
-      if (!board.leftEnd) return false;
-      if (depth > maxDepth) return false;
-      if (!isPlayableForAnyone(players, boneyard, board, playerOrder)) {
-        return true;
-      }
-
-      const nextPlayerIndex = (playerOrder.indexOf(currentPlayer) + 1) % playerOrder.length;
-      const nextPlayer = playerOrder[nextPlayerIndex];
-      const nextHand = players[nextPlayer];
-      const validMoves = getValidMoves(nextHand, board);
-      if (validMoves.length === 0) {
-        return isInevitableBlock(board, players, boneyard, nextPlayer, depth + 1, maxDepth, playerOrder);
-      }
-
-      let allLeadToBlock = true;
-      for (const move of validMoves) {
-        const simBoard = simulatePlay(board, move.tile, move.end);
-        const simPlayers = JSON.parse(JSON.stringify(players));
-        const tileIdx = simPlayers[nextPlayer].findIndex(t => t.top === move.tile.top && t.bottom === move.tile.bottom);
-        simPlayers[nextPlayer].splice(tileIdx, 1);
-        if (simPlayers[nextPlayer].length === 0) {
-          allLeadToBlock = false;
-          break;
-        }
-        if (!isInevitableBlock(simBoard, simPlayers, boneyard, nextPlayer, depth + 1, maxDepth, playerOrder)) {
-          allLeadToBlock = false;
-          break;
-        }
-      }
-      return allLeadToBlock;
-    }
-
-    function hasPreventingAlternative(hand, board, allPlayers, playerIndex, maxDepth = 0) {
-      if (!board.leftEnd) return false;
-
-      const playableTiles = hand.filter(tile => canPlayTile(tile, board));
-      if (playableTiles.length < 1) return false;
-
-      let hasNonBlockingMove = false;
-
-      for (const tile of playableTiles) {
-        const canPlayLeft = canPlayOnEnd(tile, board.leftEnd.value);
-        const canPlayRight = canPlayOnEnd(tile, board.rightEnd.value);
-
-        if (canPlayLeft) {
-          const simBoard = simulatePlay(board, tile, 'left');
-          const simPlayers = JSON.parse(JSON.stringify(allPlayers));
-          const tileIdx = simPlayers[playerIndex].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
-          simPlayers[playerIndex].splice(tileIdx, 1);
-          if (!isInevitableBlock(simBoard, simPlayers, [], playerIndex, 1, maxDepth)) {
-            hasNonBlockingMove = true;
-            break;
-          }
-        }
-
-        if (canPlayRight && (!isDouble(tile) || !canPlayLeft)) {
-          const simBoard = simulatePlay(board, tile, 'right');
-          const simPlayers = JSON.parse(JSON.stringify(allPlayers));
-          const tileIdx = simPlayers[playerIndex].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
-          simPlayers[playerIndex].splice(tileIdx, 1);
-          if (!isInevitableBlock(simBoard, simPlayers, [], playerIndex, 1, maxDepth)) {
-            hasNonBlockingMove = true;
-            break;
-          }
-        }
-      }
-
-      const hasMultipleOptions = playableTiles.length > 1 ||
-        (playableTiles.length === 1 &&
-         canPlayOnEnd(playableTiles[0], board.leftEnd.value) &&
-         canPlayOnEnd(playableTiles[0], board.rightEnd.value));
-
-      return hasMultipleOptions && hasNonBlockingMove;
-    }
-	function playAI(gameState) {
-      const { players, board, roundHistory, isThisFirstGame, playerOrder, boneyard } = gameState;
-      const playerHand = players[currentPlayer];
-
-      drawUntilMatch(gameState, currentPlayer);
-
-      if (!board.leftEnd && isThisFirstGame) {
-        if (gameState.highestDouble && playerHand.some(t => t.top === gameState.highestDouble.top && t.bottom === gameState.highestDouble.bottom)) {
-          const tileToPlay = playerHand.find(t => t.top === gameState.highestDouble.top && t.bottom === gameState.highestDouble.bottom);
-          playTile(gameState, tileToPlay, 'right');
-          return;
-        }
-      }
-
-      let bestMove = { tile: null, end: null, score: -Infinity };
-      const validMoves = getValidMoves(playerHand, board);
-
-      if (validMoves.length === 0) return;
-
-      for (const move of validMoves) {
-        let score = 0;
-        const { tile, end } = move;
-
-        const simBoard = simulatePlay(board, tile, end);
-        const simPlayers = JSON.parse(JSON.stringify(players));
-        const tileIndex = simPlayers[currentPlayer].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
-        simPlayers[currentPlayer].splice(tileIndex, 1);
-
-        if (simPlayers[currentPlayer].length === 0) {
-          score = 1000000;
-          bestMove = { tile, end, score };
-          break;
-        }
-
-        const isBlock = !isPlayableForAnyone(simPlayers, boneyard, simBoard, playerOrder);
-
-        if (isBlock) {
-          const simValues = computePlayerValues(simPlayers);
-          const myValue = simValues[currentPlayer];
-          const minValue = Math.min(...playerOrder.map(p => simValues[p]));
-
-          if (myValue <= minValue) {
-            let hadNonBlockingAlternative = false;
-            for (const otherMove of validMoves) {
-              if (otherMove.tile === move.tile && otherMove.end === move.end) continue;
-              const otherSimBoard = simulatePlay(board, otherMove.tile, otherMove.end);
-              const otherSimPlayers = JSON.parse(JSON.stringify(players));
-              const otherTileIndex = otherSimPlayers[currentPlayer].findIndex(t => t.top === otherMove.tile.top && t.bottom === otherMove.tile.bottom);
-              otherSimPlayers[currentPlayer].splice(otherTileIndex, 1);
-              if (isPlayableForAnyone(otherSimPlayers, boneyard, otherSimBoard, playerOrder)) {
-                hadNonBlockingAlternative = true;
-                break;
-              }
-            }
-
-            if (hadNonBlockingAlternative) {
-              score += 5000;
-            } else {
-              score += 2500;
-            }
-          } else {
-            score -= 10000;
-          }
-        } else {
-          let tileValue = tile.top + tile.bottom;
-          if (isDouble(tile)) {
-            tileValue += 10;
-          }
-          score += tileValue * 10;
-
-          const nextPlayerIndex = (playerOrder.indexOf(currentPlayer) + 1) % playerOrder.length;
-          const nextPlayerHand = players[playerOrder[nextPlayerIndex]];
-          if (!nextPlayerHand.some(t => canPlayTile(t, simBoard))) {
-            score += 200;
-          }
-
-          const pipsCount = countAllPips(players, roundHistory);
-          const leftEndVal = simBoard.leftEnd.value;
-          const rightEndVal = simBoard.rightEnd.value;
-          score += (8 - pipsCount[leftEndVal]) * 5;
-          score += (8 - pipsCount[rightEndVal]) * 5;
-        }
-
-        if (score > bestMove.score) {
-          bestMove = { tile, end, score };
-        }
-      }
-
-      if (bestMove.tile) {
-        playTile(gameState, bestMove.tile, bestMove.end);
-      } else if (validMoves.length > 0) {
-        playTile(gameState, validMoves[0].tile, validMoves[0].end);
-      }
-    }
-
+///
     function calculatePlacement(board, end, tableRect, tile) {
       const { V_W, V_H, H_W, H_H, FULL, OFFSET } = getTileSizes();
       const MARGIN = 0;
@@ -1630,38 +1350,318 @@ function computePlayerValues(players) {
       }
     }
 
-    function handleTileClick(gameState, tileIndex, playButtons) {
-      const { players, selectedIndex, board, isThisFirstGame } = gameState;
-      const hand = players[0];
-      const clickedTile = hand[tileIndex];
+///
+// Fixed computePlayerValues - [0-0] counts as 13 only if no other zero tiles exist (excluding [0-0] itself)
+function computePlayerValues(players) {
+  const values = [];
+  for (let p = 0; p < 4; p++) {
+    let sum = 0;
 
-      if (selectedIndex === -1) {
-        gameState.selectedIndex = tileIndex;
-      } else if (selectedIndex === tileIndex) {
-        if (board.tiles.length === 0 && isThisFirstGame) {
-          const doubles = hand.filter(t => isDouble(t));
-          if (doubles.length > 0) {
-            const highestDouble = doubles.reduce((max, t) => t.top > max.top ? t : max, doubles[0]);
-            if (clickedTile.top === highestDouble.top && clickedTile.bottom === highestDouble.bottom) {
-              return;
+    for (let tile of players[p]) {
+      let pips = tile.top + tile.bottom;
+
+      if (pips === 0) {
+        // Check if ANY player (including self) has a tile with 0, EXCLUDING [0-0] itself
+        let anyHasZeroExcludingDoubleZero = false;
+        for (let op = 0; op < 4; op++) {
+          for (let otile of players[op]) {
+            // Check if tile has 0 but is NOT [0-0]
+            if ((otile.top === 0 || otile.bottom === 0) && !(otile.top === 0 && otile.bottom === 0)) {
+              anyHasZeroExcludingDoubleZero = true;
+              break;
             }
           }
+          if (anyHasZeroExcludingDoubleZero) break;
         }
-        hand[tileIndex] = rotateTile(clickedTile);
-      } else {
-        const selectedTile = hand[selectedIndex];
-        hand[selectedIndex] = clickedTile;
-        hand[tileIndex] = selectedTile;
-        gameState.selectedIndex = -1;
+
+        // Adjust pips accordingly
+        pips = anyHasZeroExcludingDoubleZero ? 0 : 13;
       }
 
+      sum += pips;
+    }
+
+    values[p] = sum;
+  }
+
+  return values;
+}
+
+    function simulatePlay(board, tile, end) {
+      if (!board.leftEnd) {
+        return {
+          leftEnd: { value: tile.top },
+          rightEnd: { value: tile.bottom }
+        };
+      }
+
+      let simLeftEnd = { ...board.leftEnd };
+      let simRightEnd = { ...board.rightEnd };
+      if (end === 'left') {
+        const oldValue = simLeftEnd.value;
+        if (tile.top === oldValue) {
+          simLeftEnd.value = tile.bottom;
+        } else {
+          simLeftEnd.value = tile.top;
+        }
+      } else {
+        const oldValue = simRightEnd.value;
+        if (tile.top === oldValue) {
+          simRightEnd.value = tile.bottom;
+        } else {
+          simRightEnd.value = tile.top;
+        }
+      }
+      return { leftEnd: simLeftEnd, rightEnd: simRightEnd };
+    }
+	
+    function isPlayableForAnyone(players, boneyard, board, playerOrder) {
+      if (!board.leftEnd) return true;
+      for (const p of playerOrder) {
+        if (players[p].some(tile => canPlayTile(tile, board))) {
+          return true;
+        }
+      }
+      if (boneyard.length === 0) return false;
+      const left = board.leftEnd.value;
+      const right = board.rightEnd.value;
+      return boneyard.some(tile => tile.top === left || tile.bottom === left || tile.top === right || tile.bottom === right);
+    }
+
+    function countAllPips(players, roundHistory) {
+      const counts = [0, 0, 0, 0, 0, 0, 0];
+      const allKnownTiles = [];
+      allKnownTiles.push(...players[currentActivePlayerTurn]);
+      if (roundHistory) {
+        for (const move of roundHistory) {
+          allKnownTiles.push(move.playedTile);
+        }
+      }
+      for (const tile of allKnownTiles) {
+        counts[tile.top]++;
+        counts[tile.bottom]++;
+      }
+      return counts;
+    }
+
+    function getValidMoves(hand, board) {
+      const validMoves = [];
+      if (!board.leftEnd) {
+        hand.forEach(tile => validMoves.push({ tile, end: 'right' }));
+      } else {
+        hand.forEach(tile => {
+          const canLeft = canPlayOnEnd(tile, board.leftEnd.value);
+          const canRight = canPlayOnEnd(tile, board.rightEnd.value);
+          if (canLeft) {
+            validMoves.push({ tile, end: 'left' });
+          }
+          if (canRight) {
+            if (!isDouble(tile) || !canLeft) {
+              validMoves.push({ tile, end: 'right' });
+            }
+          }
+        });
+      }
+      return validMoves;
+    }
+
+    function drawUntilMatch(gameState, player) {
+      const { players, board, boneyard } = gameState;
+      const hand = players[player];
+      while (boneyard.length > 0 && getValidMoves(hand, board).length === 0) {
+        const idx = Math.floor(Math.random() * boneyard.length);
+        const drawn = boneyard.splice(idx, 1)[0];
+        hand.push(drawn);
+      }
+      if (player === 0 && hand.length > 0) {
+        const lastDrawn = hand[hand.length - 1];
+        if (canPlayTile(lastDrawn, board)) {
+          gameState.selectedIndex = hand.length - 1;
+        }
+      }
+    }
+
+    function isInevitableBlock(board, players, boneyard, currentActivePlayerTurn, depth, maxDepth, playerOrder) {
+      if (!board.leftEnd) return false;
+      if (depth > maxDepth) return false;
+      if (!isPlayableForAnyone(players, boneyard, board, playerOrder)) {
+        return true;
+      }
+
+      const nextPlayerIndex = (playerOrder.indexOf(currentActivePlayerTurn) + 1) % playerOrder.length;
+      const nextPlayer = playerOrder[nextPlayerIndex];
+      const nextHand = players[nextPlayer];
+      const validMoves = getValidMoves(nextHand, board);
+      if (validMoves.length === 0) {
+        return isInevitableBlock(board, players, boneyard, nextPlayer, depth + 1, maxDepth, playerOrder);
+      }
+
+      let allLeadToBlock = true;
+      for (const move of validMoves) {
+        const simBoard = simulatePlay(board, move.tile, move.end);
+        const simPlayers = JSON.parse(JSON.stringify(players));
+        const tileIdx = simPlayers[nextPlayer].findIndex(t => t.top === move.tile.top && t.bottom === move.tile.bottom);
+        simPlayers[nextPlayer].splice(tileIdx, 1);
+        if (simPlayers[nextPlayer].length === 0) {
+          allLeadToBlock = false;
+          break;
+        }
+        if (!isInevitableBlock(simBoard, simPlayers, boneyard, nextPlayer, depth + 1, maxDepth, playerOrder)) {
+          allLeadToBlock = false;
+          break;
+        }
+      }
+      return allLeadToBlock;
+    }
+
+    function hasPreventingAlternative(hand, board, allPlayers, playerIndex, maxDepth = 0) {
+      if (!board.leftEnd) return false;
+
+      const playableTiles = hand.filter(tile => canPlayTile(tile, board));
+      if (playableTiles.length < 1) return false;
+
+      let hasNonBlockingMove = false;
+
+      for (const tile of playableTiles) {
+        const canPlayLeft = canPlayOnEnd(tile, board.leftEnd.value);
+        const canPlayRight = canPlayOnEnd(tile, board.rightEnd.value);
+
+        if (canPlayLeft) {
+          const simBoard = simulatePlay(board, tile, 'left');
+          const simPlayers = JSON.parse(JSON.stringify(allPlayers));
+          const tileIdx = simPlayers[playerIndex].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
+          simPlayers[playerIndex].splice(tileIdx, 1);
+          if (!isInevitableBlock(simBoard, simPlayers, [], playerIndex, 1, maxDepth)) {
+            hasNonBlockingMove = true;
+            break;
+          }
+        }
+
+        if (canPlayRight && (!isDouble(tile) || !canPlayLeft)) {
+          const simBoard = simulatePlay(board, tile, 'right');
+          const simPlayers = JSON.parse(JSON.stringify(allPlayers));
+          const tileIdx = simPlayers[playerIndex].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
+          simPlayers[playerIndex].splice(tileIdx, 1);
+          if (!isInevitableBlock(simBoard, simPlayers, [], playerIndex, 1, maxDepth)) {
+            hasNonBlockingMove = true;
+            break;
+          }
+        }
+      }
+
+      const hasMultipleOptions = playableTiles.length > 1 ||
+        (playableTiles.length === 1 &&
+         canPlayOnEnd(playableTiles[0], board.leftEnd.value) &&
+         canPlayOnEnd(playableTiles[0], board.rightEnd.value));
+
+      return hasMultipleOptions && hasNonBlockingMove;
+    }
+	function playAI(gameState) {
+      const { players, board, roundHistory, isThisFirstGame, playerOrder, boneyard } = gameState;
+      const playerHand = players[currentActivePlayerTurn];
+
+      drawUntilMatch(gameState, currentActivePlayerTurn);
+
+      if (!board.leftEnd && isThisFirstGame) {
+        if (gameState.highestDouble && playerHand.some(t => t.top === gameState.highestDouble.top && t.bottom === gameState.highestDouble.bottom)) {
+          const tileToPlay = playerHand.find(t => t.top === gameState.highestDouble.top && t.bottom === gameState.highestDouble.bottom);
+          playTile(gameState, tileToPlay, 'right');
+          return;
+        }
+      }
+
+      let bestMove = { tile: null, end: null, score: -Infinity };
+      const validMoves = getValidMoves(playerHand, board);
+
+      if (validMoves.length === 0) return;
+
+      for (const move of validMoves) {
+        let score = 0;
+        const { tile, end } = move;
+
+        const simBoard = simulatePlay(board, tile, end);
+        const simPlayers = JSON.parse(JSON.stringify(players));
+        const tileIndex = simPlayers[currentActivePlayerTurn].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
+        simPlayers[currentActivePlayerTurn].splice(tileIndex, 1);
+
+        if (simPlayers[currentActivePlayerTurn].length === 0) {
+          score = 1000000;
+          bestMove = { tile, end, score };
+          break;
+        }
+
+        const isBlock = !isPlayableForAnyone(simPlayers, boneyard, simBoard, playerOrder);
+
+        if (isBlock) {
+          const simValues = computePlayerValues(simPlayers);
+          const myValue = simValues[currentActivePlayerTurn];
+          const minValue = Math.min(...playerOrder.map(p => simValues[p]));
+
+          if (myValue <= minValue) {
+            let hadNonBlockingAlternative = false;
+            for (const otherMove of validMoves) {
+              if (otherMove.tile === move.tile && otherMove.end === move.end) continue;
+              const otherSimBoard = simulatePlay(board, otherMove.tile, otherMove.end);
+              const otherSimPlayers = JSON.parse(JSON.stringify(players));
+              const otherTileIndex = otherSimPlayers[currentActivePlayerTurn].findIndex(t => t.top === otherMove.tile.top && t.bottom === otherMove.tile.bottom);
+              otherSimPlayers[currentActivePlayerTurn].splice(otherTileIndex, 1);
+              if (isPlayableForAnyone(otherSimPlayers, boneyard, otherSimBoard, playerOrder)) {
+                hadNonBlockingAlternative = true;
+                break;
+              }
+            }
+
+            if (hadNonBlockingAlternative) {
+              score += 5000;
+            } else {
+              score += 2500;
+            }
+          } else {
+            score -= 10000;
+          }
+        } else {
+          let tileValue = tile.top + tile.bottom;
+          if (isDouble(tile)) {
+            tileValue += 10;
+          }
+          score += tileValue * 10;
+
+          const nextPlayerIndex = (playerOrder.indexOf(currentActivePlayerTurn) + 1) % playerOrder.length;
+          const nextPlayerHand = players[playerOrder[nextPlayerIndex]];
+          if (!nextPlayerHand.some(t => canPlayTile(t, simBoard))) {
+            score += 200;
+          }
+
+          const pipsCount = countAllPips(players, roundHistory);
+          const leftEndVal = simBoard.leftEnd.value;
+          const rightEndVal = simBoard.rightEnd.value;
+          score += (8 - pipsCount[leftEndVal]) * 5;
+          score += (8 - pipsCount[rightEndVal]) * 5;
+        }
+
+        if (score > bestMove.score) {
+          bestMove = { tile, end, score };
+        }
+      }
+
+      if (bestMove.tile) {
+        playTile(gameState, bestMove.tile, bestMove.end);
+      }
+    }
+
+    function handleTileClick(gameState, tileIndex, playButtons) {
+      if (gameState.selectedIndex === tileIndex) {
+        gameState.selectedIndex = -1;
+      } else {
+        gameState.selectedIndex = tileIndex;
+      }
       renderGame(gameState);
     }
 
-  // Fixed playTile function - Add drawing tracking to roundHistory
+// Fixed playTile function - Add drawing tracking to roundHistory
 function playTile(gameState, tile, end) {
   const { players, board, roundHistory, isThisFirstGame, playerOrder, boneyard } = gameState;
-  const playerHand = players[currentPlayer];
+  const playerHand = players[currentActivePlayerTurn];
   const tileIndex = playerHand.findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
 
   if (tileIndex === -1 || !canPlayTile(tile, board)) {
@@ -1672,12 +1672,12 @@ function playTile(gameState, tile, end) {
   if (board.tiles.length === 0 && isThisFirstGame) {
     if (gameState.highestDouble) {
       if (tile.top !== gameState.highestDouble.top || tile.bottom !== gameState.highestDouble.bottom) {
-        if (currentPlayer === 0) {
+        if (currentActivePlayerTurn === 0) {
           alert(`Must play the highest double [${gameState.highestDouble.top}-${gameState.highestDouble.bottom}] first!`);
         }
         return false;
       }
-      if (currentPlayer !== playerOrder.find(p => players[p].some(t => t.top === gameState.highestDouble.top && t.bottom === gameState.highestDouble.bottom))) {
+      if (currentActivePlayerTurn !== playerOrder.find(p => players[p].some(t => t.top === gameState.highestDouble.top && t.bottom === gameState.highestDouble.bottom))) {
         return false;
       }
     }
@@ -1692,7 +1692,7 @@ function playTile(gameState, tile, end) {
 
   const playedTile = playerHand.splice(tileIndex, 1)[0];
 
-  if (currentPlayer === 0) {
+  if (currentActivePlayerTurn === 0) {
     gameState.selectedIndex = -1;
   }
 
@@ -1701,7 +1701,7 @@ function playTile(gameState, tile, end) {
 
   if (roundHistory) {
     roundHistory.push({
-      player: currentPlayer,
+      player: currentActivePlayerTurn,
       playedTile: {...playedTile},
       end: end,
       boardBefore: gameState.prevBoard,
@@ -1821,14 +1821,14 @@ function playTile(gameState, tile, end) {
   }
 
   playSound();
-  lastValidPlayer = currentPlayer;
+  lastValidPlayer = currentActivePlayerTurn;
 
   if (playerHand.length === 0) {
     handleNormalGameWin(gameState);
     return true;
   }
 
-  const currentIndex = playerOrder.indexOf(currentPlayer);
+  const currentIndex = playerOrder.indexOf(currentActivePlayerTurn);
   let firstSkipped = -1;
   let checkedPlayers = 0;
   let nextIndex = (currentIndex + 1) % playerOrder.length;
@@ -1854,10 +1854,10 @@ function playTile(gameState, tile, end) {
     return true;
   }
 
-  currentPlayer = nextPlayer;
+  currentActivePlayerTurn = nextPlayer;
   renderGame(gameState);
 
-  if (!gameState.gameOver && currentPlayer !== 0) {
+  if (!gameState.gameOver && currentActivePlayerTurn !== 0) {
     setTimeout(() => playAI(gameState), 1500);
   }
   return true;
@@ -1868,147 +1868,163 @@ function playTile(gameState, tile, end) {
       return playerOrder[(idx - 1 + playerOrder.length) % playerOrder.length];
     }
 
-    function updateScoresForWin(winner, gameState) {
-      let values = computePlayerValues(gameState.players);
-      let pot = 0;
-      const { playerOrder } = gameState;
-      for (let i of playerOrder) {
-        if (i !== winner) {
-          let pay = values[i] * bet;
-          pot += pay;
-          scores[i] -= pay;
-        }
-      }
-      scores[winner] += pot;
-      nextGameStarter = winner;
-      let message = `Player ${getPlayerNumber(winner)} wins ${abbreviate(pot)}\n\n`;
-      for (let i of playerOrder) {
-        if (i !== winner) {
-          let pay = values[i] * bet;
-          message += `Player ${getPlayerNumber(i)} pays ${abbreviate(pay)}\n`;
-        }
-      }
-      setTimeout(() => alert(message), 100);
+   // Updated updateScoresForWin (add localStorage save)
+function updateScoresForWin(winner, gameState) {
+  let values = computePlayerValues(gameState.players);
+  let pot = 0;
+  const { playerOrder } = gameState;
+  for (let i of playerOrder) {
+    if (i !== winner) {
+      let pay = values[i] * bet;
+      pot += pay;
+      scores[i] -= pay;
     }
-
-    function updateScoresForIntentionalBlockWithAssist(blocker, assistant, gameState) {
-      let values = computePlayerValues(gameState.players);
-      let minAll = Math.min(...gameState.playerOrder.map(p => values[p]));
-      let blockerValue = values[blocker];
-      let othersTotal = gameState.playerOrder.reduce((sum, p) => p === blocker ? sum : sum + values[p], 0);
-      let payAmount = 2 * othersTotal * bet;
-      let message;
-      if (blockerValue <= minAll) {
-        scores[assistant] -= payAmount;
-        scores[blocker] += payAmount;
-        message = `Player ${getPlayerNumber(blocker)} wins block assisted by Player ${getPlayerNumber(assistant)}.\n\n`;
-        message += `Player ${getPlayerNumber(assistant)} pays ${abbreviate(payAmount)} to Player ${getPlayerNumber(blocker)}`;
-      } else {
-        scores[blocker] -= payAmount;
-        scores[assistant] += payAmount;
-        message = `Player ${getPlayerNumber(blocker)} loses block assisted by Player ${getPlayerNumber(assistant)}.\n\n`;
-        message += `Player ${getPlayerNumber(blocker)} pays ${abbreviate(payAmount)} to Player ${getPlayerNumber(assistant)}`;
-      }
-      nextGameStarter = blocker;
-      setTimeout(() => alert(message), 100);
+  }
+  scores[winner] += pot;
+  nextGameStarter = winner;
+  let message = `Player ${getPlayerNumber(winner)} wins ${abbreviate(pot)}\n\n`;
+  for (let i of playerOrder) {
+    if (i !== winner) {
+      let pay = values[i] * bet;
+      message += `Player ${getPlayerNumber(i)} pays ${abbreviate(pay)}\n`;
     }
+  }
+  setTimeout(() => alert(message), 100);
+  
+  // Persist scores
+  localStorage.setItem('dominoScores', JSON.stringify(scores));
+}
 
-    function updateScoresForIntentionalBlockNoAssist(blocker, gameState) {
-      let values = computePlayerValues(gameState.players);
-      let blockerValue = values[blocker];
-      let othersValues = gameState.playerOrder.filter(p => p !== blocker).map(p => values[p]);
-      let minOthers = Math.min(...othersValues);
-      let totalTransfer = othersValues.reduce((a, b) => a + b, 0) * 2 * bet;
-      let message;
-      if (blockerValue <= minOthers) {
-        for (let i of gameState.playerOrder) {
-          if (i !== blocker) {
-            let pay = 2 * values[i] * bet;
-            scores[i] -= pay;
-            scores[blocker] += pay;
-          }
-        }
-        message = `Player ${getPlayerNumber(blocker)} wins block!\n\n`;
-        message += `Player ${getPlayerNumber(blocker)} receives ${abbreviate(totalTransfer)}\n\n`;
-        for (let i of gameState.playerOrder) {
-          if (i !== blocker) {
-            let pay = 2 * values[i] * bet;
-            message += `Player ${getPlayerNumber(i)} pays ${abbreviate(pay)}\n`;
-          }
-        }
-      } else {
-        for (let i of gameState.playerOrder) {
-          if (i !== blocker) {
-            let pay = 2 * values[i] * bet;
-            scores[blocker] -= pay;
-            scores[i] += pay;
-          }
-        }
-        message = `Player ${getPlayerNumber(blocker)} loses block!\n\n`;
-        message += `Player ${getPlayerNumber(blocker)} pays ${abbreviate(totalTransfer)} total\n\n`;
-        for (let i of gameState.playerOrder) {
-          if (i !== blocker) {
-            let pay = 2 * values[i] * bet;
-            message += `Player ${getPlayerNumber(i)} receives ${abbreviate(pay)}\n`;
-          }
-        }
+// Updated updateScoresForIntentionalBlockWithAssist (add localStorage save)
+function updateScoresForIntentionalBlockWithAssist(blocker, assistant, gameState) {
+  let values = computePlayerValues(gameState.players);
+  let minAll = Math.min(...gameState.playerOrder.map(p => values[p]));
+  let blockerValue = values[blocker];
+  let othersTotal = gameState.playerOrder.reduce((sum, p) => p === blocker ? sum : sum + values[p], 0);
+  let payAmount = 2 * othersTotal * bet;
+  let message;
+  if (blockerValue <= minAll) {
+    scores[assistant] -= payAmount;
+    scores[blocker] += payAmount;
+    message = `Player ${getPlayerNumber(blocker)} wins block assisted by Player ${getPlayerNumber(assistant)}.\n\n`;
+    message += `Player ${getPlayerNumber(assistant)} pays ${abbreviate(payAmount)} to Player ${getPlayerNumber(blocker)}`;
+  } else {
+    scores[blocker] -= payAmount;
+    scores[assistant] += payAmount;
+    message = `Player ${getPlayerNumber(blocker)} loses block assisted by Player ${getPlayerNumber(assistant)}.\n\n`;
+    message += `Player ${getPlayerNumber(blocker)} pays ${abbreviate(payAmount)} to Player ${getPlayerNumber(assistant)}`;
+  }
+  nextGameStarter = blocker;
+  setTimeout(() => alert(message), 100);
+  
+  // Persist scores
+  localStorage.setItem('dominoScores', JSON.stringify(scores));
+}
+
+// Updated updateScoresForIntentionalBlockNoAssist (add localStorage save)
+function updateScoresForIntentionalBlockNoAssist(blocker, gameState) {
+  let values = computePlayerValues(gameState.players);
+  let blockerValue = values[blocker];
+  let othersValues = gameState.playerOrder.filter(p => p !== blocker).map(p => values[p]);
+  let minOthers = Math.min(...othersValues);
+  let totalTransfer = othersValues.reduce((a, b) => a + b, 0) * 2 * bet;
+  let message;
+  if (blockerValue <= minOthers) {
+    for (let i of gameState.playerOrder) {
+      if (i !== blocker) {
+        let pay = 2 * values[i] * bet;
+        scores[i] -= pay;
+        scores[blocker] += pay;
       }
-      nextGameStarter = blocker;
-      setTimeout(() => alert(message), 100);
     }
-
-    function updateScoresForForceBlock(gameState) {
-      let values = computePlayerValues(gameState.players);
-      let minVal = Math.min(...gameState.playerOrder.map(p => values[p]));
-      let winners = [];
-      let losers = [];
-      for (let i of gameState.playerOrder) {
-        if (values[i] === minVal) {
-          winners.push(i);
-        } else {
-          losers.push(i);
-        }
+    message = `Player ${getPlayerNumber(blocker)} wins block!\n\n`;
+    message += `Player ${getPlayerNumber(blocker)} receives ${abbreviate(totalTransfer)}\n\n`;
+    for (let i of gameState.playerOrder) {
+      if (i !== blocker) {
+        let pay = 2 * values[i] * bet;
+        message += `Player ${getPlayerNumber(i)} pays ${abbreviate(pay)}\n`;
       }
-
-      let message;
-      if (winners.length === gameState.playerOrder.length) {
-        message = `Force block! All players tie.\n\nNo payout.\nPlayer ${getPlayerNumber(nextGameStarter)} starts next game.`;
-        nextGameStarter = gameState.playerOrder[(gameState.playerOrder.indexOf(lastValidPlayer) + 1) % gameState.playerOrder.length];
-      } else {
-        let total_pot = 0;
-        losers.forEach(l => {
-          let pay = values[l] * bet;
-          scores[l] -= pay;
-          total_pot += pay;
-        });
-        let share = total_pot / winners.length;
-        winners.forEach(w => {
-          scores[w] += share;
-        });
-        if (winners.length === 1) {
-          nextGameStarter = winners[0];
-          message = `Force block! Player ${getPlayerNumber(nextGameStarter)} has lowest hand.\n\n`;
-          message += `Player ${getPlayerNumber(nextGameStarter)} wins ${abbreviate(total_pot)}\n\n`;
-          losers.forEach(l => {
-            let pay = values[l] * bet;
-            message += `Player ${getPlayerNumber(l)} pays ${abbreviate(pay)}\n`;
-          });
-        } else {
-          nextGameStarter = gameState.playerOrder[(gameState.playerOrder.indexOf(lastValidPlayer) + 1) % gameState.playerOrder.length];
-          message = `Force block! Tie between: ${winners.map(w => `Player ${getPlayerNumber(w)}`).join(', ')}\n\n`;
-          message += `Winners share ${abbreviate(total_pot)} (${abbreviate(share)} each)\n\n`;
-          losers.forEach(l => {
-            let pay = values[l] * bet;
-            message += `Player ${getPlayerNumber(l)} pays ${abbreviate(pay)}\n`;
-          });
-        }
-      }
-      setTimeout(() => alert(message), 100);
     }
+  } else {
+    for (let i of gameState.playerOrder) {
+      if (i !== blocker) {
+        let pay = 2 * values[i] * bet;
+        scores[blocker] -= pay;
+        scores[i] += pay;
+      }
+    }
+    message = `Player ${getPlayerNumber(blocker)} loses block!\n\n`;
+    message += `Player ${getPlayerNumber(blocker)} pays ${abbreviate(totalTransfer)} total\n\n`;
+    for (let i of gameState.playerOrder) {
+      if (i !== blocker) {
+        let pay = 2 * values[i] * bet;
+        message += `Player ${getPlayerNumber(i)} receives ${abbreviate(pay)}\n`;
+      }
+    }
+  }
+  nextGameStarter = blocker;
+  setTimeout(() => alert(message), 100);
+  
+  // Persist scores
+  localStorage.setItem('dominoScores', JSON.stringify(scores));
+}
+
+// Updated updateScoresForForceBlock (add localStorage save)
+function updateScoresForForceBlock(gameState) {
+  let values = computePlayerValues(gameState.players);
+  let minVal = Math.min(...gameState.playerOrder.map(p => values[p]));
+  let winners = [];
+  let losers = [];
+  for (let i of gameState.playerOrder) {
+    if (values[i] === minVal) {
+      winners.push(i);
+    } else {
+      losers.push(i);
+    }
+  }
+
+  let message;
+  if (winners.length === gameState.playerOrder.length) {
+    message = `Force block! All players tie.\n\nNo payout.\nPlayer ${getPlayerNumber(nextGameStarter)} starts next game.`;
+    nextGameStarter = gameState.playerOrder[(gameState.playerOrder.indexOf(lastValidPlayer) + 1) % gameState.playerOrder.length];
+  } else {
+    let total_pot = 0;
+    losers.forEach(l => {
+      let pay = values[l] * bet;
+      scores[l] -= pay;
+      total_pot += pay;
+    });
+    let share = total_pot / winners.length;
+    winners.forEach(w => {
+      scores[w] += share;
+    });
+    if (winners.length === 1) {
+      nextGameStarter = winners[0];
+      message = `Force block! Player ${getPlayerNumber(nextGameStarter)} has lowest hand.\n\n`;
+      message += `Player ${getPlayerNumber(nextGameStarter)} wins ${abbreviate(total_pot)}\n\n`;
+      losers.forEach(l => {
+        let pay = values[l] * bet;
+        message += `Player ${getPlayerNumber(l)} pays ${abbreviate(pay)}\n`;
+      });
+    } else {
+      nextGameStarter = gameState.playerOrder[(gameState.playerOrder.indexOf(lastValidPlayer) + 1) % gameState.playerOrder.length];
+      message = `Force block! Tie between: ${winners.map(w => `Player ${getPlayerNumber(w)}`).join(', ')}\n\n`;
+      message += `Winners share ${abbreviate(total_pot)} (${abbreviate(share)} each)\n\n`;
+      losers.forEach(l => {
+        let pay = values[l] * bet;
+        message += `Player ${getPlayerNumber(l)} pays ${abbreviate(pay)}\n`;
+      });
+    }
+  }
+  setTimeout(() => alert(message), 100);
+  
+  // Persist scores
+  localStorage.setItem('dominoScores', JSON.stringify(scores));
+}
 
     function handleNormalGameWin(gameState) {
       gameState.gameOver = true;
-      updateScoresForWin(currentPlayer, gameState);
+      updateScoresForWin(currentActivePlayerTurn, gameState);
       renderGame(gameState);
       showNewGameButton();
     }
@@ -2303,7 +2319,7 @@ function updateScoresForForceBlock(gameState) {
         newGameBtn.style.display = 'none';
         gameState = setupGame();
         renderGame(gameState);
-        if (!gameState.gameOver && currentPlayer !== 0) {
+        if (!gameState.gameOver && currentActivePlayerTurn !== 0) {
           setTimeout(() => playAI(gameState), 1500);
         }
       };
@@ -2358,7 +2374,7 @@ function renderGame(gameState) {
     let leftPlaceholder = null;
     let rightPlaceholder = null;
 
-    if (!gameOver && currentPlayer === 0 && board.tiles.length > 0) {
+    if (!gameOver && currentActivePlayerTurn === 0 && board.tiles.length > 0) {
       const dummyTile = { top: 0, bottom: 0 };
       const tableRect = tableDiv.getBoundingClientRect();
       const hand = players[0];
@@ -2445,7 +2461,7 @@ function renderGame(gameState) {
       }
     }
 
-    if (!gameOver && currentPlayer === 0) {
+    if (!gameOver && currentActivePlayerTurn === 0) {
       if (board.tiles.length === 0) {
         tableDiv.ondragover = (e) => e.preventDefault();
         tableDiv.ondrop = (e) => {
@@ -2488,7 +2504,7 @@ function renderGame(gameState) {
       } else if (scoreValue <= -1) {
         coinColorClass = 'silver';
       }
-      scoreDiv.innerHTML = `<span class="score-arrow">${!gameOver && index === currentPlayer ? '➤' : ''}</span><span class="score-text">[P${getPlayerNumber(index)}]</span><div class="score-number"><div class="coins-container ${coinColorClass}">${coinsHtml}</div><span class="score-text" style="position: absolute; top: 50%; left: 50%;top: -1px; transform: translate(calc(-50% - 10px), calc(-50% + 3px)); z-index: 2; color: black;">${scoreText}</span></div>`;
+      scoreDiv.innerHTML = `<span class="score-arrow">${!gameOver && index === currentActivePlayerTurn ? '➤' : ''}</span><span class="score-text">[P${getPlayerNumber(index)}]</span><div class="score-number"><div class="coins-container ${coinColorClass}">${coinsHtml}</div><span class="score-text" style="position: absolute; top: 50%; left: 50%;top: -1px; transform: translate(calc(-50% - 10px), calc(-50% + 3px)); z-index: 2; color: black;">${scoreText}</span></div>`;
 
       const tilesContainer = document.createElement('div');
       tilesContainer.className = 'tiles-container';
@@ -2547,7 +2563,7 @@ function renderGame(gameState) {
         playButtons.querySelectorAll('button').forEach(btn => btn.style.display = 'none');
 
         // ADD THIS CHECK: Only draw for the human (0) if it is ACTUALLY their turn.
-        if (currentPlayer === 0) {
+        if (currentActivePlayerTurn === 0) {
           const validMovesHand = getValidMoves(players[0], board);
           if (validMovesHand.length === 0 && boneyard.length > 0) {
             drawUntilMatch(gameState, 0);
@@ -2581,7 +2597,7 @@ function renderGame(gameState) {
               isPlayable = canPlayTile(tile, board);
             }
 
-            if (isPlayable && currentPlayer === 0) {
+            if (isPlayable && currentActivePlayerTurn === 0) {
               tileDiv.classList.add('draggable');
               tileDiv.draggable = true;
 
@@ -2716,7 +2732,7 @@ function renderGame(gameState) {
 
       if (playButtons) {
         hand.appendChild(playButtons);
-        if (currentPlayer === 0 && selectedIndex !== -1) {
+        if (currentActivePlayerTurn === 0 && selectedIndex !== -1) {
           const selectedTileData = players[0][selectedIndex];
           const leftBtn = playButtons.querySelector('.play-left');
           const rightBtn = playButtons.querySelector('.play-right');
@@ -2782,9 +2798,12 @@ function renderGame(gameState) {
     } else {
       boneyardDiv.style.display = 'none';
     }
+	// Add this at the end of renderGame:
+  const betsSelect = document.getElementById('bets');
+  betsSelect.disabled = !gameState.gameOver;
   }
   
-  
+ /// 
     function centerTilesOnResize() {
       if (!gameState || !gameState.board) return;
       const table = document.getElementById('table');
