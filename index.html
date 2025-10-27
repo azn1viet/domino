@@ -197,7 +197,7 @@
   top: calc(50% - 50px);
   transform: translate(-50%, -50%);
   
-  width: 90%;
+  width: 85%;
   height: calc(100% - 200px);
   
   display: block;
@@ -813,9 +813,9 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 3.0.2</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 3.0.3</div>
 
-  <script>
+<script>
   // PWA Install Script
     let deferredPrompt;
     const installBtn = document.getElementById('installBtn');
@@ -855,13 +855,15 @@
       }
     });
   </script>
+
 <script>
 // Additional: Ensure bets is enabled initially (before first game start)
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('bets').disabled = false; // Enabled before any game starts
 });
 </script>
-  <script>
+
+<script>
     // Game Variables
     let audioContext = null;
     let canPlaySound = true;
@@ -2117,7 +2119,8 @@ function playTile(gameState, tile, end) {
   const tileIndex = playerHand.findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
 
   if (tileIndex === -1 || !canPlayTile(tile, board)) {
-    alert("Invalid move!");
+    console.warn("Invalid move attempt:", tile, "on board:", board.leftEnd?.value, board.rightEnd?.value);
+    renderGame(gameState); // Re-render to reset any UI state, can remove
     return false;
   }
 
@@ -2538,7 +2541,6 @@ function hadAlternativeThatAvoidsBlock(playerIndex, boardBefore, handBefore, pla
   return false;
 }
 ///new
-
 function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedTile, lastPlayedEnd) {
   gameState.gameOver = true;
   const { players, board, roundHistory, playerOrder, boneyard } = gameState;
@@ -2660,142 +2662,7 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
   renderGame(gameState);
   showNewGameButton();
 }
-/*
-function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedTile, lastPlayedEnd) {
-  gameState.gameOver = true;
-  const { players, board, roundHistory, playerOrder, boneyard } = gameState;
 
-  const prevBoard = gameState.prevBoard;
-  if (!prevBoard) {
-    updateScoresForForceBlock(gameState);
-    renderGame(gameState);
-    showNewGameButton();
-    return;
-  }
-
-  const lastMove = roundHistory[roundHistory.length - 1];
-  const lastPlayerHandBefore = lastMove.handBeforePlay;
-  const playersAtLast = JSON.parse(JSON.stringify(players));
-  playersAtLast[lastValidPlayer].push({...lastPlayedTile});
-
-  const lastHadAvoidingAlt = hadAlternativeThatAvoidsBlock(
-    lastValidPlayer,
-    prevBoard,
-    lastPlayerHandBefore,
-    playersAtLast,
-    boneyard,
-    playerOrder
-  );
-
-  // Enforce priority for Intentional Block with Alternatives or Self-Blocking
-  if (lastHadAvoidingAlt && roundHistory.length > 0) {
-    const passesAfterLastPlay = gameState.passHistory.length - gameState.passHistory.lastIndexOf(false) - 1;
-    if (passesAfterLastPlay === playerOrder.length - 1) {
-      // Calculate hand sums to determine winner
-      const handSums = players.map(hand => hand.reduce((sum, tile) => sum + tile.top + tile.bottom, 0));
-      const minSum = Math.min(...handSums);
-      const winnerIndices = handSums.map((sum, idx) => sum === minSum ? idx : -1).filter(idx => idx !== -1);
-
-      if (winnerIndices.includes(lastValidPlayer)) {
-        // Intentional Block: Last player is the winner
-        updateScoresForIntentionalBlockNoAssist(lastValidPlayer, gameState);
-      } else {
-        // Self-Blocking: Last player had alternatives but lost
-        updateScoresForSelfBlock(lastValidPlayer, gameState);
-      }
-      renderGame(gameState);
-      showNewGameButton();
-      return;
-    }
-  }
-
-  // Proceed to assisted or remote blocker logic if not an intentional/self-block
-  let assistant = -1;
-  if (roundHistory.length >= 2) {
-    const prevMove = roundHistory[roundHistory.length - 2];
-    const prevPlayer = prevMove.player;
-    
-    if (playerOrder.includes(prevPlayer) && prevPlayer !== lastValidPlayer) {
-      const prevHandBefore = prevMove.handBeforePlay;
-      const playersAtPrevMove = JSON.parse(JSON.stringify(players));
-      playersAtPrevMove[prevPlayer].push({...prevMove.playedTile});
-      playersAtPrevMove[lastValidPlayer].push({...lastPlayedTile});
-
-      const prevBoardBefore = prevMove.boardBefore;
-      
-      if (prevBoardBefore && prevBoardBefore.leftEnd) {
-        const prevHadAvoidingAlt = hadAlternativeThatAvoidsBlock(
-          prevPlayer,
-          prevBoardBefore,
-          prevHandBefore,
-          playersAtPrevMove,
-          boneyard,
-          playerOrder
-        );
-        
-        if (prevHadAvoidingAlt) {
-          assistant = prevPlayer;
-        }
-      }
-    }
-  }
-
-  if (assistant !== -1) {
-    updateScoresForIntentionalBlockWithAssist(lastValidPlayer, assistant, gameState);
-  } else {
-    let remoteBlocker = -1;
-    const startIndex = roundHistory.length - 2;
-    const endIndex = Math.max(0, roundHistory.length - 4);
-
-    for (let i = startIndex; i >= endIndex; i--) {
-      const move = roundHistory[i];
-      const player = move.player;
-
-      if (!playerOrder.includes(player)) {
-        continue;
-      }
-
-      const handBefore = move.handBeforePlay;
-      const playersAtThisMove = JSON.parse(JSON.stringify(players));
-      
-      for (let j = i; j < roundHistory.length; j++) {
-        const laterMove = roundHistory[j];
-        playersAtThisMove[laterMove.player].push({...laterMove.playedTile});
-      }
-
-      const boardBefore = move.boardBefore;
-      
-      if (!boardBefore || !boardBefore.leftEnd) {
-        continue;
-      }
-
-      const hadAvoidingAlt = hadAlternativeThatAvoidsBlock(
-        player,
-        boardBefore,
-        handBefore,
-        playersAtThisMove,
-        boneyard,
-        playerOrder
-      );
-
-      if (hadAvoidingAlt) {
-        remoteBlocker = player;
-        break;
-      }
-    }
-
-    if (remoteBlocker !== -1) {
-      updateScoresForIntentionalBlockNoAssist(remoteBlocker, gameState);
-    } else {
-      updateScoresForForceBlock(gameState); // Fallback if no alternatives found
-    }
-  }
-  
-  renderGame(gameState);
-  showNewGameButton();
-}*/
-
-///
 // Keep existing helper functions (these don't need changes)
 function updateScoresForIntentionalBlockNoAssist(blocker, gameState) {
   let values = computePlayerValues(gameState.players);
@@ -3061,7 +2928,47 @@ function renderGame(gameState) {
         highestDoubleInHand = gameState.highestDouble;
       }
     }
+///
+// Calculate dynamic overlap
+const rootStyle = getComputedStyle(document.documentElement);
+const tileWidth = parseFloat(rootStyle.getPropertyValue('--tile-width'));
+const tileHeight = parseFloat(rootStyle.getPropertyValue('--tile-height'));
+const tileGap = parseFloat(rootStyle.getPropertyValue('--tile-gap'));
 
+const numTiles = players[index].length;
+let containerWidth = window.innerWidth - 20; // Screen width minus padding
+let containerHeight = window.innerHeight - 20; // Screen height minus padding
+let overlapStyle = '';
+
+if (index === 0 || index === 2) {
+  // Horizontal layout (South, North)
+  const totalWidth = numTiles * tileWidth + (numTiles - 1) * tileGap;
+  if (totalWidth > containerWidth) {
+    tilesContainer.classList.add('overlapped', 'horizontal');
+    const overlap = (totalWidth - containerWidth) / (numTiles - 1);
+    overlapStyle = `margin-left: -${overlap.toFixed(2)}px;`;
+  }
+} else {
+  // Vertical layout (East, West)
+  const totalHeight = numTiles * tileHeight + (numTiles - 1) * tileGap;
+  if (totalHeight > containerHeight) {
+    tilesContainer.classList.add('overlapped', 'vertical');
+    const overlap = (totalHeight - containerHeight) / (numTiles - 1);
+    overlapStyle = `margin-top: -${overlap.toFixed(2)}px;`;
+  }
+}
+
+// Apply dynamic overlap via inline style
+if (overlapStyle) {
+  const styleElement = document.createElement('style');
+  styleElement.textContent = `
+    .player-hand[data-player="${index}"] .tiles-container.overlapped > .tile:not(:first-child) {
+      ${overlapStyle}
+    }
+  `;
+  hand.appendChild(styleElement);
+}
+///
     if (!gameOver && index === 0) {
       playButtons = document.createElement('div');
       playButtons.className = 'play-buttons';
