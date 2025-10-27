@@ -845,7 +845,7 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 3.1.0</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 3.1.1</div>
 
 <script>
   // PWA Install Script
@@ -1606,10 +1606,13 @@ function computePlayerValues(players) {
     }
 	///
 	
-function playAI(gameState) { 
- const { players, board, roundHistory, isThisFirstGame, boneyard, playerOrder } = gameState;
+function playAI(gameState) {
+  // ⭐️ FIX: Reverted this line to your original. 
+  // It now assumes 'currentActivePlayerTurn' exists in the scope, as your original code did.
+  const { players, board, roundHistory, isThisFirstGame, boneyard, playerOrder } = gameState; 
 
   // --- SAFETY CHECK FOR TURN INDEX ---
+  // This check will now use the 'currentActivePlayerTurn' from the outer scope.
   if (typeof currentActivePlayerTurn !== 'number' || currentActivePlayerTurn < 0 || currentActivePlayerTurn >= players.length) {
     console.error('⚠️ playAI: invalid currentActivePlayerTurn =', currentActivePlayerTurn, 'players length =', players.length);
     return;
@@ -1687,6 +1690,46 @@ function playAI(gameState) {
     return 0;
   }
 
+  // ===== NEW HELPER FUNCTION =====
+  /**
+   * Checks if any *winning* opponent (lower hand value) can create a 
+   * *winning block* on their *next* turn, given our simulated move.
+   */
+  function checkOpponentWinningBlock(simBoard, simPlayers, boneyard, boneyardEmpty, playerOrder, currentActivePlayerTurn, winningOpponents) {
+    let opponentCanCreateWinningBlock = false;
+    for (const opponent of winningOpponents) {
+      const oppPlayer = opponent.player;
+      const oppHand = simPlayers[oppPlayer];
+      const oppMoves = getValidMoves(oppHand, simBoard);
+
+      if (oppMoves.length > 0) {
+        for (const oppMove of oppMoves) {
+          const oppSimBoard = simulatePlay(simBoard, oppMove.tile, oppMove.end);
+          const oppSimPlayers = clone(simPlayers);
+          const oppTileIdx = oppSimPlayers[oppPlayer].findIndex(t =>
+            t.top === oppMove.tile.top && t.bottom === oppMove.tile.bottom
+          );
+          if (oppTileIdx === -1) continue; // Should not happen, but safety
+          oppSimPlayers[oppPlayer].splice(oppTileIdx, 1);
+
+          const oppIsBlock = !isPlayableForAnyone(oppSimPlayers, boneyard, oppSimBoard, playerOrder);
+          if (oppIsBlock && boneyardEmpty) {
+            const oppSimValues = computePlayerValues(oppSimPlayers);
+            const oppValue = oppSimValues[oppPlayer];
+            const othersValues = playerOrder.filter(p => p !== oppPlayer).map(p => oppSimValues[p]);
+            const minOthers = Math.min(...othersValues);
+            if (oppValue <= minOthers) {
+              opponentCanCreateWinningBlock = true;
+              break;
+            }
+          }
+        }
+      }
+      if (opponentCanCreateWinningBlock) break;
+    }
+    return opponentCanCreateWinningBlock;
+  }
+
   // ===== TILE COUNT & HAND VALUE ANALYSIS =====
   const myTileCount = playerHand.length;
   const opponentTileCounts = playerOrder
@@ -1713,11 +1756,17 @@ function playAI(gameState) {
       handValue: currentValues[p],
       isWinningPosition: currentValues[p] <= myCurrentValue
     }));
-
-  const hasWinningOpponent = opponentThreats.some(opp => opp.isWinningPosition);
+  
+  const winningOpponents = opponentThreats.filter(o => o.isWinningPosition);
+  const hasWinningOpponent = winningOpponents.length > 0;
   const mostDangerousOpponent = opponentThreats
     .filter(opp => opp.isWinningPosition)
     .sort((a, b) => a.handValue - b.handValue)[0] || null;
+    
+  // Find opponents who can win *next turn* (1 tile left)
+  const runOutThreats = playerOrder.filter(p =>
+    p !== currentActivePlayerTurn && players[p].length === 1
+  );
 
   // ===== Precompute pip visibility =====
   const seenPips = countSeenPips();
@@ -1744,6 +1793,10 @@ function playAI(gameState) {
     const simBoard = simulatePlay(board, tile, end);
     const simPlayers = clone(players);
     const tileIndex = simPlayers[currentActivePlayerTurn].findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
+    
+    // Safety check: if tile not found, this move is invalid
+    if (tileIndex === -1) continue; 
+    
     simPlayers[currentActivePlayerTurn].splice(tileIndex, 1);
 
     // ===== PRIORITY 0: WINNING MOVE =====
@@ -1753,6 +1806,34 @@ function playAI(gameState) {
       bestMove = { tile, end, score };
       break;
     }
+    
+    // ===== ⭐️ NEW: PRIORITY -1: AVOID OPPONENT WIN (RUN-OUT) ⭐️ =====
+    // Check if this move allows an opponent with one tile to win *this next turn*.
+    // We use the *original* 'players' object to see their current hands.
+    let opponentCanWinNext = false;
+    if (runOutThreats.length > 0) {
+      for (const oppPlayer of runOutThreats) {
+        const oppHand = players[oppPlayer]; // Their hand (of 1 tile)
+        // Check if their one tile is playable on our *simulated* board
+        const oppMoves = getValidMoves(oppHand, simBoard);
+        if (oppMoves.length > 0) {
+          opponentCanWinNext = true;
+          break;
+        }
+      }
+    }
+
+    if (opponentCanWinNext) {
+      // This is a game-losing move. Assign a massive penalty.
+      // This score is catastrophic, ensuring it's only picked if *all*
+      // moves lead to an immediate loss.
+      score = -500_000;
+      if (score > bestMove.score) {
+        bestMove = { tile, end, score };
+      }
+      continue; // Stop processing this disastrous move
+    }
+    // =============================================================
 
     const simValues = computePlayerValues(simPlayers);
     const mySimValue = simValues[currentActivePlayerTurn];
@@ -1837,37 +1918,17 @@ function playAI(gameState) {
         // a strong closure: highly valuable to consider
         // check whether opponents are likely to benefit: simulate one move ahead for opponents
         if (hasWinningOpponent) {
-          // penalize if any winning opponent could use this to create a winning block (you already had similar logic)
-          for (const opponent of opponentThreats.filter(o => o.isWinningPosition)) {
-            const oppPlayer = opponent.player;
-            const oppHand = simPlayers[oppPlayer];
-            const oppMoves = getValidMoves(oppHand, simBoard);
-            if (oppMoves.length > 0) {
-              let oppCouldWinBlock = false;
-              for (const oppMove of oppMoves) {
-                const oppSimBoard = simulatePlay(simBoard, oppMove.tile, oppMove.end);
-                const oppSimPlayers = clone(simPlayers);
-                const oppTileIdx = oppSimPlayers[oppPlayer].findIndex(t => 
-                  t.top === oppMove.tile.top && t.bottom === oppMove.tile.bottom
-                );
-                oppSimPlayers[oppPlayer].splice(oppTileIdx, 1);
-                const oppIsBlock = !isPlayableForAnyone(oppSimPlayers, boneyard, oppSimBoard, playerOrder);
-                if (oppIsBlock && boneyardEmpty) {
-                  const oppSimValues = computePlayerValues(oppSimPlayers);
-                  const oppValue = oppSimValues[oppPlayer];
-                  const othersValues = playerOrder.filter(p => p !== oppPlayer).map(p => oppSimValues[p]);
-                  const minOthers = Math.min(...othersValues);
-                  if (oppValue <= minOthers) {
-                    oppCouldWinBlock = true;
-                    break;
-                  }
-                }
-              }
-              if (oppCouldWinBlock) {
-                score -= 6000; // serious penalty
-              }
-            }
+          // penalize if any winning opponent could use this to create a winning block
+          
+          // ===== ⭐️ REFACTORED BLOCK ⭐️ =====
+          const oppCouldWinBlock = checkOpponentWinningBlock(
+            simBoard, simPlayers, boneyard, boneyardEmpty,
+            playerOrder, currentActivePlayerTurn, winningOpponents
+          );
+          if (oppCouldWinBlock) {
+            score -= 6000; // serious penalty
           }
+          // ===================================
         }
       }
 
@@ -1882,9 +1943,11 @@ function playAI(gameState) {
           for (const nextMove of nextMoves) {
             const nextSimBoard = simulatePlay(simBoard, nextMove.tile, nextMove.end);
             const nextSimPlayers = clone(simPlayers);
-            const nextTileIdx = nextSimPlayers[nextPlayer].findIndex(t => 
+            const nextTileIdx = nextSimPlayers[nextPlayer].findIndex(t =>
               t.top === nextMove.tile.top && t.bottom === nextMove.tile.bottom
             );
+            if(nextTileIdx === -1) continue;
+            
             nextSimPlayers[nextPlayer].splice(nextTileIdx, 1);
             const stillPlayable = isPlayableForAnyone(nextSimPlayers, boneyard, nextSimBoard, playerOrder);
             if (!stillPlayable && boneyardEmpty) {
@@ -1933,34 +1996,15 @@ function playAI(gameState) {
         if (!isBlock) {
           // Prevent opponent winning blocks (existing logic)
           if (hasWinningOpponent) {
-            for (const opponent of opponentThreats.filter(o => o.isWinningPosition)) {
-              const oppPlayer = opponent.player;
-              const oppHand = simPlayers[oppPlayer];
-              const oppMoves = getValidMoves(oppHand, simBoard);
-              if (oppMoves.length > 0) {
-                let oppCouldWinBlock = false;
-                for (const oppMove of oppMoves) {
-                  const oppSimBoard = simulatePlay(simBoard, oppMove.tile, oppMove.end);
-                  const oppSimPlayers = clone(simPlayers);
-                  const oppTileIdx = oppSimPlayers[oppPlayer].findIndex(t => 
-                    t.top === oppMove.tile.top && t.bottom === oppMove.tile.bottom
-                  );
-                  oppSimPlayers[oppPlayer].splice(oppTileIdx, 1);
-                  const oppIsBlock = !isPlayableForAnyone(oppSimPlayers, boneyard, oppSimBoard, playerOrder);
-                  if (oppIsBlock && boneyardEmpty) {
-                    const oppSimValues = computePlayerValues(oppSimPlayers);
-                    const oppValue = oppSimValues[oppPlayer];
-                    const othersValues = playerOrder.filter(p => p !== oppPlayer).map(p => oppSimValues[p]);
-                    const minOthers = Math.min(...othersValues);
-                    if (oppValue <= minOthers) {
-                      oppCouldWinBlock = true;
-                      break;
-                    }
-                  }
-                }
-                if (oppCouldWinBlock) score -= 7000;
-              }
+             // ===== ⭐️ REFACTORED BLOCK ⭐️ =====
+            const oppCouldWinBlock = checkOpponentWinningBlock(
+              simBoard, simPlayers, boneyard, boneyardEmpty,
+              playerOrder, currentActivePlayerTurn, winningOpponents
+            );
+            if (oppCouldWinBlock) {
+              score -= 7000;
             }
+            // ===================================
           }
 
           // Trap strategy (help opponent lose block) - kept
@@ -1974,9 +2018,11 @@ function playAI(gameState) {
               for (const nextMove of nextPlayerMoves) {
                 const nextSimBoard = simulatePlay(simBoard, nextMove.tile, nextMove.end);
                 const nextSimPlayers = clone(simPlayers);
-                const nextTileIdx = nextSimPlayers[nextPlayer].findIndex(t => 
+                const nextTileIdx = nextSimPlayers[nextPlayer].findIndex(t =>
                   t.top === nextMove.tile.top && t.bottom === nextMove.tile.bottom
                 );
+                if (nextTileIdx === -1) continue;
+                
                 nextSimPlayers[nextPlayer].splice(nextTileIdx, 1);
                 const nextIsBlock = !isPlayableForAnyone(nextSimPlayers, boneyard, nextSimBoard, playerOrder);
                 if (nextIsBlock && boneyardEmpty) {
@@ -1995,7 +2041,7 @@ function playAI(gameState) {
           }
 
           // TURN CONTINUITY (avoid drawing)
-          const tilesPlayableAfterThisMove = simPlayers[currentActivePlayerTurn].filter(t => 
+          const tilesPlayableAfterThisMove = simPlayers[currentActivePlayerTurn].filter(t =>
             canPlayTile(t, simBoard)
           ).length;
           const remainingTileCount = simPlayers[currentActivePlayerTurn].length;
@@ -2007,10 +2053,10 @@ function playAI(gameState) {
           const leftEndVal = simBoard.leftEnd.value;
           const rightEndVal = simBoard.rightEnd.value;
 
-          const tilesMatchingLeft = simPlayers[currentActivePlayerTurn].filter(t => 
+          const tilesMatchingLeft = simPlayers[currentActivePlayerTurn].filter(t =>
             t.top === leftEndVal || t.bottom === leftEndVal
           ).length;
-          const tilesMatchingRight = simPlayers[currentActivePlayerTurn].filter(t => 
+          const tilesMatchingRight = simPlayers[currentActivePlayerTurn].filter(t =>
             t.top === rightEndVal || t.bottom === rightEndVal
           ).length;
 
@@ -2054,38 +2100,20 @@ function playAI(gameState) {
         // 4-player logic largely preserved but enriched with pip heuristics
         if (!isBlock) {
           if (hasWinningOpponent) {
-            for (const opponent of opponentThreats.filter(o => o.isWinningPosition)) {
-              const oppPlayer = opponent.player;
-              const oppHand = simPlayers[oppPlayer];
-              const oppMoves = getValidMoves(oppHand, simBoard);
-              if (oppMoves.length > 0) {
-                let oppCouldWinBlock = false;
-                for (const oppMove of oppMoves) {
-                  const oppSimBoard = simulatePlay(simBoard, oppMove.tile, oppMove.end);
-                  const oppSimPlayers = clone(simPlayers);
-                  const oppTileIdx = oppSimPlayers[oppPlayer].findIndex(t => 
-                    t.top === oppMove.tile.top && t.bottom === oppMove.tile.bottom
-                  );
-                  oppSimPlayers[oppPlayer].splice(oppTileIdx, 1);
-                  const oppIsBlock = !isPlayableForAnyone(oppSimPlayers, boneyard, oppSimBoard, playerOrder);
-                  if (oppIsBlock) {
-                    const oppSimValues = computePlayerValues(oppSimPlayers);
-                    const oppValue = oppSimValues[oppPlayer];
-                    const othersValues = playerOrder.filter(p => p !== oppPlayer).map(p => oppSimValues[p]);
-                    const minOthers = Math.min(...othersValues);
-                    if (oppValue <= minOthers) {
-                      oppCouldWinBlock = true;
-                      break;
-                    }
-                  }
-                }
-                if (oppCouldWinBlock) score -= 7000;
-              }
+             // ===== ⭐️ REFACTORED BLOCK ⭐️ =====
+             // Note: boneyardEmpty is effectively 'true' in 4-player, so helper is fine
+            const oppCouldWinBlock = checkOpponentWinningBlock(
+              simBoard, simPlayers, boneyard, true,
+              playerOrder, currentActivePlayerTurn, winningOpponents
+            );
+            if (oppCouldWinBlock) {
+              score -= 7000;
             }
+            // ===================================
           }
 
           // TURN CONTINUITY & pip diversity
-          const tilesPlayableAfterThisMove = simPlayers[currentActivePlayerTurn].filter(t => 
+          const tilesPlayableAfterThisMove = simPlayers[currentActivePlayerTurn].filter(t =>
             canPlayTile(t, simBoard)
           ).length;
           const remainingTileCount = simPlayers[currentActivePlayerTurn].length;
@@ -2097,10 +2125,10 @@ function playAI(gameState) {
           const leftEndVal = simBoard.leftEnd.value;
           const rightEndVal = simBoard.rightEnd.value;
 
-          const tilesMatchingLeft = simPlayers[currentActivePlayerTurn].filter(t => 
+          const tilesMatchingLeft = simPlayers[currentActivePlayerTurn].filter(t =>
             t.top === leftEndVal || t.bottom === leftEndVal
           ).length;
-          const tilesMatchingRight = simPlayers[currentActivePlayerTurn].filter(t => 
+          const tilesMatchingRight = simPlayers[currentActivePlayerTurn].filter(t =>
             t.top === rightEndVal || t.bottom === rightEndVal
           ).length;
 
@@ -2128,7 +2156,7 @@ function playAI(gameState) {
           if (isDouble(tile)) tileValue += 10;
           score += tileValue * 10;
 
-          // BLOCK NEXT PLAYER
+          // BLOCK NEXT PLAYER (force pass)
           const nextPlayerIndex = (playerOrder.indexOf(currentActivePlayerTurn) + 1) % playerOrder.length;
           const nextPlayerHand = players[playerOrder[nextPlayerIndex]];
           if (!nextPlayerHand.some(t => canPlayTile(t, simBoard))) {
@@ -2149,9 +2177,11 @@ function playAI(gameState) {
               if (otherMove.tile === move.tile && otherMove.end === move.end) continue;
               const otherSimBoard = simulatePlay(board, otherMove.tile, otherMove.end);
               const otherSimPlayers = clone(players);
-              const otherTileIndex = otherSimPlayers[currentActivePlayerTurn].findIndex(t => 
+              const otherTileIndex = otherSimPlayers[currentActivePlayerTurn].findIndex(t =>
                 t.top === otherMove.tile.top && t.bottom === otherMove.tile.bottom
               );
+              if (otherTileIndex === -1) continue;
+
               otherSimPlayers[currentActivePlayerTurn].splice(otherTileIndex, 1);
               if (isPlayableForAnyone(otherSimPlayers, boneyard, otherSimBoard, playerOrder)) {
                 hadNonBlockingAlternative = true;
