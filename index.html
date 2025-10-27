@@ -845,7 +845,7 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 3.1.1</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 3.1.2</div>
 
 <script>
   // PWA Install Script
@@ -2673,7 +2673,7 @@ function hadAlternativeThatAvoidsBlock(playerIndex, boardBefore, handBefore, pla
   return false;
 }
 ///added
-function hadAlternativeThatAvoidsBlock(playerIndex, boardBefore, handBefore, playersState, boneyard, playerOrder) {
+/*function hadAlternativeThatAvoidsBlock(playerIndex, boardBefore, handBefore, playersState, boneyard, playerOrder) {
   const validMoves = getValidMoves(handBefore, boardBefore);
   
   if (validMoves.length <= 1) {
@@ -2695,7 +2695,7 @@ function hadAlternativeThatAvoidsBlock(playerIndex, boardBefore, handBefore, pla
   }
 
   return false;
-}
+}*/
 ///new
 function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedTile, lastPlayedEnd) {
   gameState.gameOver = true;
