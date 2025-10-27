@@ -213,10 +213,10 @@
       flex-direction: column;
       align-items: center;
     }
-
+/*
  /* SOUTH — score below tiles, near screen bottom edge */
 .player-south {
-  bottom: 0;
+ bottom: 0;
   left: 50%;
   transform: translateX(-50%);
   flex-direction: column;
@@ -226,7 +226,34 @@
   bottom: 69px; /* move closer or further from bottom edge */
   left: 50%;
   transform: translateX(-50%);
+}*/
+
+.player-south {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100vw;
+  height: 150px; /* fixed area for player hand */
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
 }
+
+.player-south .tiles-container {
+  position: absolute;
+  bottom: 80px; /* your designed height above bottom */
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.player-south .score {
+  position: absolute;
+  bottom: 68px; /* below the tiles */
+  left: 50%;
+  transform: translateX(-50%);
+}
+
 
 /* NORTH — score above tiles, near top edge */
 .player-north {
@@ -278,7 +305,7 @@
       min-height: 80px;
     }
 
- .player-south .tiles-container,
+ /*.player-south .tiles-container,*/
 .player-north .tiles-container {
   max-width: calc(var(--tile-width) * 7 + var(--tile-gap) * 6);
   margin-top: 7px;
@@ -816,7 +843,7 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 3.0.5</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 3.0.6</div>
 
 <script>
   // PWA Install Script
