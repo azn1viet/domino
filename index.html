@@ -843,7 +843,7 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 3.0.6</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 3.0.7</div>
 
 <script>
   // PWA Install Script
@@ -1397,41 +1397,41 @@ document.addEventListener('click', (e) => {
     }
 
 ///
-// Fixed computePlayerValues - [0-0] counts as 13 only if no other zero tiles exist (excluding [0-0] itself)
 function computePlayerValues(players) {
   const values = [];
+  
+  // Count zeros on the table (from played tiles)
+  let zerosOnTable = 0;
+  if (gameState && gameState.roundHistory) {
+    for (let move of gameState.roundHistory) {
+      const tile = move.playedTile;
+      if (tile.top === 0) zerosOnTable++;
+      if (tile.bottom === 0) zerosOnTable++;
+    }
+  }
+  
+  // If 6 zeros visible, the 7th zero is in [0-0] → value = 13
+  // Otherwise [0-0] = 0
+  const doubleZeroValue = (zerosOnTable >= 6) ? 13 : 0;
+  
   for (let p = 0; p < 4; p++) {
     let sum = 0;
-
     for (let tile of players[p]) {
       let pips = tile.top + tile.bottom;
-
+      
+      // Special case: [0-0]
       if (pips === 0) {
-        // Check if ANY player (including self) has a tile with 0, EXCLUDING [0-0] itself
-        let anyHasZeroExcludingDoubleZero = false;
-        for (let op = 0; op < 4; op++) {
-          for (let otile of players[op]) {
-            // Check if tile has 0 but is NOT [0-0]
-            if ((otile.top === 0 || otile.bottom === 0) && !(otile.top === 0 && otile.bottom === 0)) {
-              anyHasZeroExcludingDoubleZero = true;
-              break;
-            }
-          }
-          if (anyHasZeroExcludingDoubleZero) break;
-        }
-
-        // Adjust pips accordingly
-        pips = anyHasZeroExcludingDoubleZero ? 0 : 13;
+        pips = doubleZeroValue;
       }
-
+      
       sum += pips;
     }
-
     values[p] = sum;
   }
-
+  
   return values;
 }
+///
 
     function simulatePlay(board, tile, end) {
       if (!board.leftEnd) {
