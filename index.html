@@ -845,7 +845,7 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 3.1.3</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 3.1.4</div>
 
 <script>
   // PWA Install Script
@@ -1272,132 +1272,138 @@ document.addEventListener('click', (e) => {
       }
     });
 ///
-    function calculatePlacement(board, end, tableRect, tile) {
-      const { V_W, V_H, H_W, H_H, FULL, OFFSET } = getTileSizes();
-      const MARGIN = 0;
+function calculatePlacement(board, end, tableRect, tile) {
+  const { V_W, V_H, H_W, H_H, FULL, OFFSET } = getTileSizes();
+  const MARGIN = 0;
 
-      let e = board[end === 'left' ? 'leftEnd' : 'rightEnd'];
-      let isLeftChain = end === 'left';
-      let turnDir = isLeftChain ? 'up' : 'down';
+  let e = board[end === 'left' ? 'leftEnd' : 'rightEnd'];
+  let isLeftChain = end === 'left';
+  let turnDir = isLeftChain ? 'up' : 'down';
 
-      let p = {};
-      let hdir = e.dir;
-      let isDoubleTile = isDouble(tile);
-      let tryVerticalFirst = false;
+  let p = {};
+  let hdir = e.dir;
+  let isDoubleTile = isDouble(tile);
+  let tryVerticalFirst = false;
 
-      if (board.forceHorizontalNext) {
-        tryVerticalFirst = false;
-        board.forceHorizontalNext = false;
-      } else {
-        if (isDoubleTile && !e.isVertical) {
-          const nearLeftEdge = e.x - FULL * 1.5 < MARGIN + FULL * 2;
-          const nearRightEdge = e.x + FULL * 2.5 > tableRect.width - (MARGIN + FULL * 2);
-          if ((isLeftChain && nearLeftEdge) || (!isLeftChain && nearRightEdge)) {
-            tryVerticalFirst = true;
-          }
-        }
-      }
-
-      if (tryVerticalFirst) {
-        if (turnDir === 'up') {
-          p.x = e.x - OFFSET;
-          p.y = e.y - (FULL + OFFSET);
-          p.nextEndX = p.x + OFFSET;
-          p.nextEndY = p.y + OFFSET;
-        } else {
-          p.x = e.x - OFFSET;
-          p.y = e.y + OFFSET;
-          p.nextEndX = p.x + OFFSET;
-          p.nextEndY = p.y + FULL - OFFSET;
-        }
-        p.isHorizontal = false;
-        p.isVertical = true;
-        p.width = V_W;
-        p.height = V_H;
-
-        const v_eff_x = p.x + board.offsetX;
-        const v_eff_y = p.y + board.offsetY;
-        p.boundCheck = (v_eff_x < MARGIN || v_eff_x + p.width > tableRect.width - MARGIN ||
-                        v_eff_y < MARGIN || v_eff_y + p.height > tableRect.height - MARGIN);
-
-        if (!p.boundCheck) {
-          let newHdir = hdir === 'left' ? 'right' : 'left';
-          p.newHdir = newHdir;
-          p.turnDir = turnDir;
-          const nearLeftEdge = v_eff_x - FULL * 1.5 < MARGIN + FULL * 2;
-          const nearRightEdge = v_eff_x + FULL * 2.5 > tableRect.width - (MARGIN + FULL * 2);
-          if (nearLeftEdge || nearRightEdge) {
-            board.forceHorizontalNext = true;
-          }
-          return p;
-        }
-      }
-
-      if (hdir === 'left') {
-        p.x = e.x - (FULL + OFFSET);
-        p.nextEndX = p.x + OFFSET;
-      } else {
-        p.x = e.x + OFFSET;
-        p.nextEndX = p.x + FULL - OFFSET;
-      }
-      p.y = e.y - OFFSET;
-      p.isHorizontal = true;
-      p.isVertical = false;
-      p.width = H_W;
-      p.height = H_H;
-      p.nextEndY = p.y + OFFSET;
-
-      const eff_x = p.x + board.offsetX;
-      const eff_y = p.y + board.offsetY;
-      p.boundCheck = (eff_x < MARGIN || eff_x + p.width > tableRect.width - MARGIN ||
-                      eff_y < MARGIN || eff_y + p.height > tableRect.height - MARGIN);
-
-      if (!p.boundCheck) {
-        return p;
-      } else {
-        if (turnDir === 'up') {
-          p.y = e.y - (FULL + OFFSET);
-          p.nextEndY = p.y + OFFSET;
-        } else {
-          p.y = e.y + OFFSET;
-          p.nextEndY = p.y + FULL - OFFSET;
-        }
-        p.x = e.x - OFFSET;
-        p.isHorizontal = false;
-        p.isVertical = true;
-        p.width = V_W;
-        p.height = V_H;
-        p.nextEndX = p.x + OFFSET;
-
-        const v_eff_x = p.x + board.offsetX;
-        const v_eff_y = p.y + board.offsetY;
-        let v_bound = (v_eff_x < MARGIN || v_eff_x + p.width > tableRect.width - MARGIN ||
-                       v_eff_y < MARGIN || v_eff_y + p.height > tableRect.height - MARGIN);
-
-        if (v_bound) {
-          let shiftX = 0, shiftY = 0;
-          if (v_eff_x < MARGIN) shiftX = MARGIN - v_eff_x;
-          else if (v_eff_x + p.width > tableRect.width - MARGIN)
-            shiftX = (tableRect.width - MARGIN) - (v_eff_x + p.width);
-          if (v_eff_y < MARGIN) shiftY = MARGIN - v_eff_y;
-          else if (v_eff_y + p.height > tableRect.height - MARGIN)
-            shiftY = (tableRect.height - MARGIN) - (v_eff_y + p.height);
-          board.offsetX += shiftX;
-          board.offsetY += shiftY;
-        }
-
-        let newHdir = hdir === 'left' ? 'right' : 'left';
-        p.newHdir = newHdir;
-        p.turnDir = turnDir;
-        const nearLeftEdge = v_eff_x - FULL * 1.5 < MARGIN + FULL * 2;
-        const nearRightEdge = v_eff_x + FULL * 2.5 > tableRect.width - (MARGIN + FULL * 2);
-        if (nearLeftEdge || nearRightEdge) {
-          board.forceHorizontalNext = true;
-        }
-        return p;
+  if (board.forceHorizontalNext) {
+    tryVerticalFirst = false;
+    board.forceHorizontalNext = false;
+  } else {
+    if (isDoubleTile && !e.isVertical) {
+      // ⭐ FIX: Only turn vertical when VERY close to edge (within 1 tile width)
+      const nearLeftEdge = e.x - FULL < MARGIN;
+      const nearRightEdge = e.x + FULL > tableRect.width - MARGIN;
+      if ((isLeftChain && nearLeftEdge) || (!isLeftChain && nearRightEdge)) {
+        tryVerticalFirst = true;
       }
     }
+  }
 
+  if (tryVerticalFirst) {
+    if (turnDir === 'up') {
+      p.x = e.x - OFFSET;
+      p.y = e.y - (FULL + OFFSET);
+      p.nextEndX = p.x + OFFSET;
+      p.nextEndY = p.y + OFFSET;
+    } else {
+      p.x = e.x - OFFSET;
+      p.y = e.y + OFFSET;
+      p.nextEndX = p.x + OFFSET;
+      p.nextEndY = p.y + FULL - OFFSET;
+    }
+    p.isHorizontal = false;
+    p.isVertical = true;
+    p.width = V_W;
+    p.height = V_H;
+
+    const v_eff_x = p.x + board.offsetX;
+    const v_eff_y = p.y + board.offsetY;
+    p.boundCheck = (v_eff_x < MARGIN || v_eff_x + p.width > tableRect.width - MARGIN ||
+                    v_eff_y < MARGIN || v_eff_y + p.height > tableRect.height - MARGIN);
+
+    if (!p.boundCheck) {
+      let newHdir = hdir === 'left' ? 'right' : 'left';
+      p.newHdir = newHdir;
+      p.turnDir = turnDir;
+      
+      // ⭐ FIX: Update edge detection for force horizontal
+      const nearLeftEdge = v_eff_x - FULL < MARGIN;
+      const nearRightEdge = v_eff_x + FULL > tableRect.width - MARGIN;
+      if (nearLeftEdge || nearRightEdge) {
+        board.forceHorizontalNext = true;
+      }
+      return p;
+    }
+  }
+
+  // Try horizontal placement
+  if (hdir === 'left') {
+    p.x = e.x - (FULL + OFFSET);
+    p.nextEndX = p.x + OFFSET;
+  } else {
+    p.x = e.x + OFFSET;
+    p.nextEndX = p.x + FULL - OFFSET;
+  }
+  p.y = e.y - OFFSET;
+  p.isHorizontal = true;
+  p.isVertical = false;
+  p.width = H_W;
+  p.height = H_H;
+  p.nextEndY = p.y + OFFSET;
+
+  const eff_x = p.x + board.offsetX;
+  const eff_y = p.y + board.offsetY;
+  p.boundCheck = (eff_x < MARGIN || eff_x + p.width > tableRect.width - MARGIN ||
+                  eff_y < MARGIN || eff_y + p.height > tableRect.height - MARGIN);
+
+  if (!p.boundCheck) {
+    return p;
+  } else {
+    // Horizontal doesn't fit, turn vertical
+    if (turnDir === 'up') {
+      p.y = e.y - (FULL + OFFSET);
+      p.nextEndY = p.y + OFFSET;
+    } else {
+      p.y = e.y + OFFSET;
+      p.nextEndY = p.y + FULL - OFFSET;
+    }
+    p.x = e.x - OFFSET;
+    p.isHorizontal = false;
+    p.isVertical = true;
+    p.width = V_W;
+    p.height = V_H;
+    p.nextEndX = p.x + OFFSET;
+
+    const v_eff_x = p.x + board.offsetX;
+    const v_eff_y = p.y + board.offsetY;
+    let v_bound = (v_eff_x < MARGIN || v_eff_x + p.width > tableRect.width - MARGIN ||
+                   v_eff_y < MARGIN || v_eff_y + p.height > tableRect.height - MARGIN);
+
+    if (v_bound) {
+      let shiftX = 0, shiftY = 0;
+      if (v_eff_x < MARGIN) shiftX = MARGIN - v_eff_x;
+      else if (v_eff_x + p.width > tableRect.width - MARGIN)
+        shiftX = (tableRect.width - MARGIN) - (v_eff_x + p.width);
+      if (v_eff_y < MARGIN) shiftY = MARGIN - v_eff_y;
+      else if (v_eff_y + p.height > tableRect.height - MARGIN)
+        shiftY = (tableRect.height - MARGIN) - (v_eff_y + p.height);
+      board.offsetX += shiftX;
+      board.offsetY += shiftY;
+    }
+
+    let newHdir = hdir === 'left' ? 'right' : 'left';
+    p.newHdir = newHdir;
+    p.turnDir = turnDir;
+    
+    // ⭐ FIX: Update edge detection for force horizontal
+    const nearLeftEdge = v_eff_x - FULL < MARGIN;
+    const nearRightEdge = v_eff_x + FULL > tableRect.width - MARGIN;
+    if (nearLeftEdge || nearRightEdge) {
+      board.forceHorizontalNext = true;
+    }
+    return p;
+  }
+}
 ///
 function computePlayerValues(players) {
   const values = [];
