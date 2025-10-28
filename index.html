@@ -814,7 +814,7 @@
         <option value="Close" selected>Close</option>
       </select>
     </label>
-    <label>Background Color &nbsp;
+    <label>Background Color
       <select id="backgroundColor">
         <option value="white">White</option>
         <option value="olive">Olive</option>
@@ -845,7 +845,7 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 3.1.2</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 3.1.3</div>
 
 <script>
   // PWA Install Script
@@ -2672,30 +2672,7 @@ function hadAlternativeThatAvoidsBlock(playerIndex, boardBefore, handBefore, pla
   // All alternatives also lead to force block
   return false;
 }
-///added
-/*function hadAlternativeThatAvoidsBlock(playerIndex, boardBefore, handBefore, playersState, boneyard, playerOrder) {
-  const validMoves = getValidMoves(handBefore, boardBefore);
-  
-  if (validMoves.length <= 1) {
-    return false;
-  }
 
-  for (const move of validMoves) {
-    const simBoard = simulatePlay(boardBefore, move.tile, move.end);
-    const simPlayers = JSON.parse(JSON.stringify(playersState));
-    
-    const tileIdx = simPlayers[playerIndex].findIndex(t => 
-      t.top === move.tile.top && t.bottom === move.tile.bottom
-    );
-    simPlayers[playerIndex].splice(tileIdx, 1);
-
-    if (isPlayableForAnyone(simPlayers, boneyard, simBoard, playerOrder)) {
-      return true;
-    }
-  }
-
-  return false;
-}*/
 ///new
 function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedTile, lastPlayedEnd) {
   gameState.gameOver = true;
@@ -2724,66 +2701,83 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
   );
 
   if (lastHadAvoidingAlt) {
-    let assistant = -1;
+    // ===== RULE 1 or 2: Last player is INTENTIONAL BLOCKER =====
     
-    if (roundHistory.length >= 2) {
-      const prevMove = roundHistory[roundHistory.length - 2];
-      const prevPlayer = prevMove.player;
+    // Check for DIRECT ASSISTANT (player sitting directly before blocker)
+    const blockerIndex = playerOrder.indexOf(lastValidPlayer);
+    const directBeforeIndex = (blockerIndex - 1 + playerOrder.length) % playerOrder.length;
+    const directBeforePlayer = playerOrder[directBeforeIndex];
+    
+    let directAssistant = -1;
+    
+    // Search backwards in history for the most recent move by the player directly before blocker
+    for (let i = roundHistory.length - 2; i >= 0; i--) {
+      const move = roundHistory[i];
       
-      if (playerOrder.includes(prevPlayer) && prevPlayer !== lastValidPlayer) {
-        const prevHandBefore = prevMove.handBeforePlay;
-        const playersAtPrevMove = JSON.parse(JSON.stringify(players));
-        playersAtPrevMove[prevPlayer].push({...prevMove.playedTile});
-        playersAtPrevMove[lastValidPlayer].push({...lastPlayedTile});
-
-        const prevBoardBefore = prevMove.boardBefore;
+      // ⭐ KEY FIX: Only check if this player sits DIRECTLY before the blocker
+      if (move.player === directBeforePlayer) {
+        const handBefore = move.handBeforePlay;
+        const playersAtMove = JSON.parse(JSON.stringify(players));
         
-        if (prevBoardBefore && prevBoardBefore.leftEnd) {
-          const prevHadAvoidingAlt = hadAlternativeThatAvoidsBlock(
-            prevPlayer,
-            prevBoardBefore,
-            prevHandBefore,
-            playersAtPrevMove,
+        // Reconstruct game state at that move
+        for (let j = i; j < roundHistory.length; j++) {
+          playersAtMove[roundHistory[j].player].push({...roundHistory[j].playedTile});
+        }
+        
+        const boardBefore = move.boardBefore;
+        if (boardBefore && boardBefore.leftEnd) {
+          const hadAlt = hadAlternativeThatAvoidsBlock(
+            directBeforePlayer,
+            boardBefore,
+            handBefore,
+            playersAtMove,
             boneyard,
             playerOrder
           );
           
-          if (prevHadAvoidingAlt) {
-            assistant = prevPlayer;
+          if (hadAlt) {
+            directAssistant = directBeforePlayer;
           }
         }
+        break; // Found the move by direct-before player, stop searching
       }
     }
-
-    if (assistant !== -1) {
-      updateScoresForIntentionalBlockWithAssist(lastValidPlayer, assistant, gameState);
-    } else {
-      updateScoresForIntentionalBlockNoAssist(lastValidPlayer, gameState);
+    
+    if (directAssistant !== -1) {
+      // RULE 1: Intentional block WITH direct assistant
+      updateScoresForIntentionalBlockWithAssist(lastValidPlayer, directAssistant, gameState);
+      renderGame(gameState);
+      showNewGameButton();
+      return;
     }
     
+    // RULE 2: Intentional block (no direct assistant)
+    updateScoresForIntentionalBlockNoAssist(lastValidPlayer, gameState);
     renderGame(gameState);
     showNewGameButton();
     return;
   }
 
+  // ===== RULE 3 or 4: Last player had NO alternatives - check for REMOTE BLOCKER =====
+  // Search backwards in PLAY ORDER to find first player who had alternatives and caused force block
+  
   let remoteBlocker = -1;
-  const startIndex = roundHistory.length - 2;
-  const endIndex = Math.max(0, roundHistory.length - 4);
-
-  for (let i = startIndex; i >= endIndex; i--) {
+  
+  // Search backwards from second-to-last move
+  for (let i = roundHistory.length - 2; i >= 0; i--) {
     const move = roundHistory[i];
     const player = move.player;
 
     if (!playerOrder.includes(player)) {
-      continue;
+      continue; // Skip invalid players
     }
 
     const handBefore = move.handBeforePlay;
-    const playersAtThisMove = JSON.parse(JSON.stringify(players));
+    const playersAtMove = JSON.parse(JSON.stringify(players));
     
+    // Reconstruct hands at this move
     for (let j = i; j < roundHistory.length; j++) {
-      const laterMove = roundHistory[j];
-      playersAtThisMove[laterMove.player].push({...laterMove.playedTile});
+      playersAtMove[roundHistory[j].player].push({...roundHistory[j].playedTile});
     }
 
     const boardBefore = move.boardBefore;
@@ -2792,33 +2786,37 @@ function handleBlockedGame(gameState, lastValidPlayer, firstSkipped, lastPlayedT
       continue;
     }
 
-    const hadAvoidingAlt = hadAlternativeThatAvoidsBlock(
+    // Check if this player had alternatives that would avoid the force block
+    const hadAlt = hadAlternativeThatAvoidsBlock(
       player,
       boardBefore,
       handBefore,
-      playersAtThisMove,
+      playersAtMove,
       boneyard,
       playerOrder
     );
 
-    if (hadAvoidingAlt) {
+    if (hadAlt) {
+      // Found first player in play order who had alternatives and caused force block
       remoteBlocker = player;
-      break;
+      break; // ⭐ STOP at first condition met
     }
   }
 
   if (remoteBlocker !== -1) {
+    // RULE 3: Remote blocker (caused force block)
     updateScoresForIntentionalBlockNoAssist(remoteBlocker, gameState);
     renderGame(gameState);
     showNewGameButton();
     return;
   }
 
+  // RULE 4: True force block (nobody had alternatives)
   updateScoresForForceBlock(gameState);
   renderGame(gameState);
   showNewGameButton();
 }
-
+///
 // Keep existing helper functions (these don't need changes)
 function updateScoresForIntentionalBlockNoAssist(blocker, gameState) {
   let values = computePlayerValues(gameState.players);
@@ -3128,7 +3126,7 @@ if (overlapStyle) {
     if (!gameOver && index === 0) {
       playButtons = document.createElement('div');
       playButtons.className = 'play-buttons';
-      playButtons.innerHTML = `<button class="play-left">Play Left</button><button class="play-right">Play Right</button>`;
+      playButtons.innerHTML = `<button class="play-left">Play </button><button class="play-right">Play </button>`;
       playButtons.querySelectorAll('button').forEach(btn => btn.style.display = 'none');
     }
 
@@ -3327,12 +3325,12 @@ if (overlapStyle) {
           const rightEnd = board.rightEnd.value;
           if (canPlayOnEnd(selectedTileData, leftEnd)) {
             leftBtn.style.display = 'inline-block';
-            leftBtn.textContent = `Play Left (${leftEnd})`;
+            leftBtn.textContent = `Play Left ${leftEnd}`;
             leftBtn.onclick = () => { const currentSelected = players[0][gameState.selectedIndex]; playTile(gameState, currentSelected, 'left'); };
           }
           if (canPlayOnEnd(selectedTileData, rightEnd)) {
             rightBtn.style.display = 'inline-block';
-            rightBtn.textContent = `Play Right (${rightEnd})`;
+            rightBtn.textContent = `Play Right ${rightEnd}`;
             rightBtn.onclick = () => { const currentSelected = players[0][gameState.selectedIndex]; playTile(gameState, currentSelected, 'right'); };
           }
         }
