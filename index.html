@@ -845,7 +845,7 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 3.1.4</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 3.1.5</div>
 
 <script>
   // PWA Install Script
@@ -1237,11 +1237,29 @@ document.addEventListener('click', (e) => {
     optionsMenu.style.display = 'none';
   }
 });
-    document.getElementById('numPlayers').onchange = (e) => {
-      numPlayersVar = parseInt(e.target.value);
-      startNewGame();
-      document.getElementById('options-menu').style.display = 'none';
-    };
+document.getElementById('numPlayers').onchange = (e) => {
+  // Prevent changing players during active game
+  if (gameState && !gameState.gameOver) {
+    alert('Cannot change number of Players during game!');
+    e.target.value = numPlayersVar; // Revert to current value
+    return;
+  }
+  
+  const newPlayerCount = parseInt(e.target.value);
+  numPlayersVar = newPlayerCount;
+  
+  // Preserve last winner priority (don't call startNewGame)
+  document.getElementById('new-game').style.display = 'none';
+  gameState = setupGame(); // Uses existing nextGameStarter and isOverallFirstGame
+  renderGame(gameState);
+  
+  // If it's AI's turn, let them play
+  if (!gameState.gameOver && currentActivePlayerTurn !== 0) {
+    setTimeout(() => playAI(gameState), 1500);
+  }
+  
+  document.getElementById('options-menu').style.display = 'none';
+};
 
     document.getElementById('tileMode').onchange = (e) => {
       tileMode = e.target.value;
