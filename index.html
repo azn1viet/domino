@@ -845,7 +845,7 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.0.0</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.0.1</div>
 
 <script>
   // PWA Install Script
@@ -1309,7 +1309,8 @@ document.addEventListener('click', (e) => {
     optionsMenu.style.display = 'none';
   }
 });
-document.getElementById('numPlayers').onchange = (e) => {
+///
+document.getElementById('numPlayers').onchange = async (e) => {
   // Prevent changing players during active game
   if (gameState && !gameState.gameOver) {
     safeAlert('Cannot change number of Players during game!');
@@ -1318,6 +1319,14 @@ document.getElementById('numPlayers').onchange = (e) => {
   }
   
   const newPlayerCount = parseInt(e.target.value);
+  
+  // Close options menu immediately (so training message is visible)
+  document.getElementById('options-menu').style.display = 'none';
+  
+  // Train AI if needed for this mode
+  await trainAIForMode(newPlayerCount);
+  
+  // Now update the game
   numPlayersVar = newPlayerCount;
   
   // Preserve last winner priority (don't call startNewGame)
@@ -1329,10 +1338,8 @@ document.getElementById('numPlayers').onchange = (e) => {
   if (!gameState.gameOver && currentActivePlayerTurn !== 0) {
     setTimeout(() => playAI(gameState), 1500);
   }
-  
-  document.getElementById('options-menu').style.display = 'none';
 };
-
+///
     document.getElementById('tileMode').onchange = (e) => {
       tileMode = e.target.value;
       if (gameState) renderGame(gameState);
@@ -1701,8 +1708,49 @@ function computePlayerValues(players) {
       return hasMultipleOptions && hasNonBlockingMove;
     }
 	///
-	
-	
+// Shared function to train AI for specific player mode
+// Shared function to train AI for specific player mode
+async function trainAIForMode(playerCount) {
+  const trainingKey = `Domino_AI_Trained_${playerCount}P`;
+  const alreadyTrained = localStorage.getItem(trainingKey);
+  
+  if (!alreadyTrained) {
+    // Show loading message
+    const loadingMsg = document.createElement('div');
+    loadingMsg.id = 'ai-training-msg';
+    loadingMsg.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.9);color:#0f0;padding:20px 40px;border:2px solid #0f0;border-radius:10px;z-index:10001;font-size:18px;text-align:center;';
+    loadingMsg.innerHTML = `🤖 Training AI for ${playerCount}-player mode...<br><span style="font-size:14px;color:#add8e6;">Please wait ~5 seconds</span>`;
+    document.body.appendChild(loadingMsg);
+    
+    // Small delay to show message
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Temporarily set numPlayersVar for training
+    const originalPlayerCount = numPlayersVar;
+    numPlayersVar = playerCount;
+    
+    // Train AI on selected mode
+    console.log(`🤖 Training AI for ${playerCount}-player mode...`);
+    window.trainingMode = true;
+    await aiBrain.selfTrainAI(2000, 200);
+    window.trainingMode = false;
+    
+    // Restore original player count
+    numPlayersVar = originalPlayerCount;
+    
+    // Mark as trained
+    localStorage.setItem(trainingKey, 'true');
+    console.log(`✅ AI training complete for ${playerCount}-player mode!`);
+    
+    // Remove loading message
+    loadingMsg.remove();
+    
+    return true; // Trained
+  } else {
+    console.log(`✅ AI already trained for ${playerCount}-player mode`);
+    return false; // Already trained
+  }
+}
 	///
 	/* ===== Domino AI Brain (Q-learning) - insert ABOVE playAI() =====
    Stores Q-table in localStorage ("Domino_AI_Q").
@@ -1860,88 +1908,124 @@ function calculateReward(gameStateBefore, playerIndex, actionMove, gameStateAfte
     LS_KEY,
     // Quick headless self-training using your existing functions (make sure setupGame & playTile exist)
 // Replace the existing selfTrainAI with this safer version
-async selfTrainAI(iterations = 2000, showEvery = 200) {
+async selfTrainAI(iterations = 2000, showEvery = 200, progressCallback = null) {
+  // Safety check: if training mode stuck, check timestamp
   if (window.trainingMode) {
-    console.warn("⚠️ Training already in progress.");
-    return;
-  }
-  
-  window.trainingMode = true;
-  console.log(`🤖 selfTrainAI: starting ${iterations} games (silent mode).`);
-
-  for (let g = 0; g < iterations; g++) {
-    try {
-      let gs = setupGame();
-
-      if (typeof gs.gameOver === 'undefined') gs.gameOver = false;
-
-      let safety = 20000;
-
-      while (!gs.gameOver && safety-- > 0) {
-        const p = (typeof currentActivePlayerTurn === 'number') ? currentActivePlayerTurn
-                  : (typeof gs.currentPlayer === 'number' ? gs.currentPlayer
-                  : (typeof gs.turnIndex === 'number' ? gs.turnIndex : 0));
-
-        if (!gs.players || !Array.isArray(gs.players) || !gs.players[p]) {
-          throw new Error("Invalid game state players or player index");
-        }
-
-        const playerHand = gs.players[p];
-        const validMoves = (typeof getValidMoves === "function") ? getValidMoves(playerHand, gs.board) : [];
-
-        const stateBefore = JSON.parse(JSON.stringify(gs));
-
-        let chosen;
-        if (!validMoves || validMoves.length === 0) {
-          if (typeof drawUntilMatch === "function") {
-            try { drawUntilMatch(gs, p); } catch (e) { /* ignore */ }
-          }
-          chosen = "PASS";
-        } else {
-          chosen = aiBrain.chooseMove(gs, p, validMoves, 0.25);
-
-          if (!chosen || !chosen.tile) {
-            chosen = validMoves[Math.floor(Math.random() * validMoves.length)];
-          }
-
-          if (typeof playTile === "function") {
-            playTile(gs, chosen.tile, chosen.end);
-          } else {
-            throw new Error("No playTile function found for training.");
-          }
-        }
-
-        const stateAfter = JSON.parse(JSON.stringify(gs));
-
-        try {
-          const reward = aiBrain.calculateReward(stateBefore, p, chosen, stateAfter);
-          aiBrain.updateQ(stateBefore, p, chosen, reward, stateAfter);
-        } catch (e) {
-          console.warn("aiBrain learning update failed for a step:", e && e.message ? e.message : e);
-        }
-
-        if (gs.gameOver) break;
-      }
-
-      // Progress logging without RAF
-      if (g % showEvery === 0) {
-        if (g % (showEvery * 5) === 0) {
-          console.log(`selfTrainAI: completed games ${g}`);
-        }
-        // Minimal yield to prevent blocking
-        await new Promise(resolve => setTimeout(resolve, 0));
-      }
-
-    } catch (err) {
-      console.warn(`⚠️ selfTrainAI: game ${g} failed and was skipped – reason:`, err && err.message ? err.message : err);
-      await new Promise(resolve => setTimeout(resolve, 0));
-      continue;
+    const now = Date.now();
+    const lastTrainingTime = window.lastTrainingStartTime || 0;
+    
+    // If more than 5 seconds passed since training started, assume it's stuck
+    if (lastTrainingTime > 0 && now - lastTrainingTime > 5000) {
+      console.warn("⚠️ Training mode was stuck. Auto-resetting...");
+      window.trainingMode = false;
+      window.lastTrainingStartTime = null;
+    } else {
+      console.warn("⚠️ Training already in progress.");
+      return;
     }
   }
+  
+  // Mark training start time
+  window.trainingMode = true;
+  window.lastTrainingStartTime = Date.now();
+  console.log(`🤖 selfTrainAI: starting ${iterations} games (silent mode).`);
 
-  try { save(); } catch (e) { /* ignore */ }
-  window.trainingMode = false;
-  console.log(`✅ selfTrainAI finished. Q saved to localStorage key: ${LS_KEY}`);
+  try {
+    for (let g = 0; g < iterations; g++) {
+      try {
+        let gs = setupGame();
+
+        if (typeof gs.gameOver === 'undefined') gs.gameOver = false;
+
+        let safety = 20000;
+
+        while (!gs.gameOver && safety-- > 0) {
+          const p = (typeof currentActivePlayerTurn === 'number') ? currentActivePlayerTurn
+                    : (typeof gs.currentPlayer === 'number' ? gs.currentPlayer
+                    : (typeof gs.turnIndex === 'number' ? gs.turnIndex : 0));
+
+          if (!gs.players || !Array.isArray(gs.players) || !gs.players[p]) {
+            throw new Error("Invalid game state players or player index");
+          }
+
+          const playerHand = gs.players[p];
+          const validMoves = (typeof getValidMoves === "function") ? getValidMoves(playerHand, gs.board) : [];
+
+          const stateBefore = JSON.parse(JSON.stringify(gs));
+
+          let chosen;
+          if (!validMoves || validMoves.length === 0) {
+            if (typeof drawUntilMatch === "function") {
+              try { drawUntilMatch(gs, p); } catch (e) { /* ignore */ }
+            }
+            chosen = "PASS";
+          } else {
+            chosen = aiBrain.chooseMove(gs, p, validMoves, 0.25);
+
+            if (!chosen || !chosen.tile) {
+              chosen = validMoves[Math.floor(Math.random() * validMoves.length)];
+            }
+
+            if (typeof playTile === "function") {
+              playTile(gs, chosen.tile, chosen.end);
+            } else {
+              throw new Error("No playTile function found for training.");
+            }
+          }
+
+          const stateAfter = JSON.parse(JSON.stringify(gs));
+
+          try {
+            const reward = aiBrain.calculateReward(stateBefore, p, chosen, stateAfter);
+            aiBrain.updateQ(stateBefore, p, chosen, reward, stateAfter);
+          } catch (e) {
+            console.warn("aiBrain learning update failed for a step:", e && e.message ? e.message : e);
+          }
+
+          if (gs.gameOver) break;
+        }
+
+        // Progress logging with callback
+        if (g % showEvery === 0) {
+          // Update timestamp to show training is still active
+          window.lastTrainingStartTime = Date.now();
+          
+          // Update UI progress if callback provided
+          if (progressCallback && typeof progressCallback === 'function') {
+            progressCallback(g);
+          }
+          
+          // Console logging (less frequent for 20k games)
+          if (g % (showEvery * 5) === 0) {
+            console.log(`selfTrainAI: completed games ${g} / ${iterations}`);
+          }
+          
+          // Minimal yield to prevent blocking UI updates
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
+      } catch (err) {
+        console.warn(`⚠️ selfTrainAI: game ${g} failed and was skipped – reason:`, err && err.message ? err.message : err);
+        await new Promise(resolve => setTimeout(resolve, 0));
+        continue;
+      }
+    }
+
+    // Final progress update
+    if (progressCallback && typeof progressCallback === 'function') {
+      progressCallback(iterations);
+    }
+
+    try { save(); } catch (e) { /* ignore */ }
+    
+  } catch (error) {
+    console.error("❌ Training failed:", error);
+  } finally {
+    // ALWAYS reset training mode, even if error occurs
+    window.trainingMode = false;
+    window.lastTrainingStartTime = null;
+    console.log(`✅ selfTrainAI finished. Q saved to localStorage key: ${LS_KEY}`);
+  }
 }
  };
 })(); // end aiBrain
@@ -3649,41 +3733,21 @@ function renderGame(gameState) {
         .then(() => console.log('✅ Service worker registered'))
         .catch(err => console.error('SW registration failed:', err));
     }
-	
-window.addEventListener("load", () => {
-  // Only start training on explicit user action, and only if game hasn't started
-  document.body.addEventListener("click", async function startAI() {
-    document.body.removeEventListener("click", startAI);
-    
-    // Safety check: don't train if user already started a game
-    if (gameState && !gameState.gameOver) {
-      console.log("⚠️ Game already in progress, skipping AI training");
-      return;
-    }
-    
-    console.log("🤖 Starting AI self-training in background...");
-    
-    // Store current game state if exists
-    const userGameState = gameState ? JSON.parse(JSON.stringify(gameState)) : null;
-    const userScores = [...scores];
-    
-    window.trainingMode = true;
-    await aiBrain.selfTrainAI(2000, 200);
-    window.trainingMode = false;
-    
-    // Restore user's game state and scores
-    if (userGameState) {
-      gameState = userGameState;
-      scores = userScores;
-      renderGame(gameState);
-    }
-    
-    console.log("✅ AI training completed! Game state preserved.");
-  });
+
+startGameBtn.addEventListener('click', async () => {
+  const selectedMode = selectedPlayers;
+  
+  numPlayersVar = selectedMode;
+  document.getElementById('numPlayers').value = numPlayersVar;
+  modal.classList.add('hidden');
+  
+  // Train AI if needed for this mode
+  await trainAIForMode(selectedMode);
+  
+  // Start game
+  initAudioContext();
+  startNewGame();
 });
-  </script>
-
-
+ </script>
 </body>
-
 </html>
