@@ -845,7 +845,7 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.0.4</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.0.5</div>
 
 <script>
   // PWA Install Script
@@ -1670,7 +1670,10 @@ function computePlayerValues(players) {
       let allLeadToBlock = true;
       for (const move of validMoves) {
         const simBoard = simulatePlay(board, move.tile, move.end);
-        const simPlayers = JSON.parse(JSON.stringify(players));
+		
+        //const simPlayers = JSON.parse(JSON.stringify(players));
+		const simPlayers = players.map(hand => hand.slice());
+
         const tileIdx = simPlayers[nextPlayer].findIndex(t => t.top === move.tile.top && t.bottom === move.tile.bottom);
         simPlayers[nextPlayer].splice(tileIdx, 1);
         if (simPlayers[nextPlayer].length === 0) {
@@ -1759,9 +1762,15 @@ async function trainAIForMode(playerCount) {
       // Train AI on selected mode
       console.log(`🤖 Starting AI training for ${playerCount}-player mode...`);
       window.trainingMode = true;
-      
+      ///
+	  const renderGameBackup = window.renderGame;
+window.renderGame = function() {}; // disable rendering
+	  ///
       await aiBrain.selfTrainAI(200, 20, updateProgress);
       
+	  ///
+	  window.renderGame = renderGameBackup;
+///
       window.trainingMode = false;
       
       // Restore original player count
@@ -1838,8 +1847,14 @@ const aiBrain = (function () {
 
   let Q = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
 
-  function save() { localStorage.setItem(LS_KEY, JSON.stringify(Q)); }
-  
+  let saveCounter = 0;
+function saveQ(force = false) {
+  saveCounter++;
+  if (force || saveCounter % 100 === 0) {
+    localStorage.setItem(LS_KEY, JSON.stringify(Q));
+  }
+}
+
   ///
   // Helper to get Q-value for a state-action pair
   function getQValue(gameState, playerIndex, actionMove) {
@@ -1918,7 +1933,7 @@ const aiBrain = (function () {
     const updated = old + alpha * (reward + gamma * maxNext - old);
     Q[s][a] = updated;
     // Minor save every update (keeps learning durable). If performance matters, save less often.
-    save();
+    saveQ();
   }
 
   // Reward function tailored to your real game:
@@ -1973,10 +1988,10 @@ function calculateReward(gameStateBefore, playerIndex, actionMove, gameStateAfte
     updateQ,
 	getQValue, // <-- ADD THIS LINE
     calculateReward,
-    save: () => { save(); },
+    save: () => { saveQ(); },
     load: () => { Q = JSON.parse(localStorage.getItem(LS_KEY) || "{}"); },
     exportQ: () => JSON.stringify(Q),
-    importQ: (json) => { Q = JSON.parse(json || "{}"); save(); },
+    importQ: (json) => { Q = JSON.parse(json || "{}"); saveQ(); },
     LS_KEY,
 async selfTrainAI(iterations = 200, showEvery = 200, progressCallback = null) {
   // FORCE RESET if stuck
@@ -2104,7 +2119,7 @@ async selfTrainAI(iterations = 200, showEvery = 200, progressCallback = null) {
           // Save periodically (every 200 games)
           if (g % 200 === 0 && g > 0) {
             try { 
-              save(); 
+              saveQ(); 
               console.log(`💾 Checkpoint save at ${g} games`);
             } catch (e) { 
               console.warn("Save failed:", e);
@@ -2138,7 +2153,7 @@ async selfTrainAI(iterations = 200, showEvery = 200, progressCallback = null) {
 
     // Final save
     try { 
-      save(); 
+      saveQ(); 
       console.log(`💾 Final save completed`);
     } catch (e) { 
       console.error("Final save failed:", e);
