@@ -845,7 +845,7 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.0.3</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.0.4</div>
 
 <script>
   // PWA Install Script
@@ -938,10 +938,11 @@ let isTrueFirstGame = true; // ⭐ NEW: Track if it's the very first game ever
     }
   };
 
-  // Override setTimeout - block ALL timeouts during training
+  // Override setTimeout - ALLOW delays of 0 or very short during training
   window.setTimeout = function(fn, delay, ...args) {
-    if (window.trainingMode) {
-      return null; // Block all timeouts during training
+    if (window.trainingMode && delay > 10) {
+      // Block long delays during training, but allow yield delays (0-10ms)
+      return null;
     }
     return original.setTimeout.call(window, fn, delay, ...args);
   };
@@ -961,7 +962,6 @@ let isTrueFirstGame = true; // ⭐ NEW: Track if it's the very first game ever
     window.requestAnimationFrame = original.requestAnimationFrame;
   };
 })();
-
 ///
 
 // Load persisted data from localStorage
@@ -1728,8 +1728,6 @@ function computePlayerValues(players) {
       return hasMultipleOptions && hasNonBlockingMove;
     }
 	///
-// Shared function to train AI for specific player mode
-// Shared function to train AI for specific player mode
 async function trainAIForMode(playerCount) {
   const trainingKey = `Domino_AI_Trained_${playerCount}P`;
   const alreadyTrained = localStorage.getItem(trainingKey);
@@ -1739,38 +1737,81 @@ async function trainAIForMode(playerCount) {
     const loadingMsg = document.createElement('div');
     loadingMsg.id = 'ai-training-msg';
     loadingMsg.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.9);color:#0f0;padding:20px 40px;border:2px solid #0f0;border-radius:10px;z-index:10001;font-size:18px;text-align:center;';
-    loadingMsg.innerHTML = `🤖 Training AI for ${playerCount}-player mode...<br><span style="font-size:14px;color:#add8e6;">Please wait ~5 seconds</span>`;
+    loadingMsg.innerHTML = `🤖 Training AI for ${playerCount}-player mode...<br><span style="font-size:14px;color:#add8e6;">Progress: 0/200 games (0%)</span>`;
     document.body.appendChild(loadingMsg);
     
-    // Small delay to show message
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Progress callback to update UI
+    const updateProgress = (gamesCompleted) => {
+      if (loadingMsg && loadingMsg.parentNode) {
+        const percent = Math.floor((gamesCompleted / 200) * 100);
+        loadingMsg.innerHTML = `🤖 Training AI for ${playerCount}-player mode...<br><span style="font-size:14px;color:#add8e6;">Progress: ${gamesCompleted}/200 games (${percent}%)</span>`;
+      }
+    };
     
-    // Temporarily set numPlayersVar for training
-    const originalPlayerCount = numPlayersVar;
-    numPlayersVar = playerCount;
+    try {
+      // Small delay to show message
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Temporarily set numPlayersVar for training
+      const originalPlayerCount = numPlayersVar;
+      numPlayersVar = playerCount;
+      
+      // Train AI on selected mode
+      console.log(`🤖 Starting AI training for ${playerCount}-player mode...`);
+      window.trainingMode = true;
+      
+      await aiBrain.selfTrainAI(200, 20, updateProgress);
+      
+      window.trainingMode = false;
+      
+      // Restore original player count
+      numPlayersVar = originalPlayerCount;
+      
+      // Mark as trained
+      localStorage.setItem(trainingKey, 'true');
+      console.log(`✅ AI training complete for ${playerCount}-player mode!`);
+      
+      return true; // Trained successfully
+      
+    } catch (error) {
+      console.error(`❌ Training failed for ${playerCount}-player mode:`, error);
+      
+      // Update message to show error
+      if (loadingMsg && loadingMsg.parentNode) {
+        loadingMsg.innerHTML = `❌ Training failed!<br><span style="font-size:14px;color:#ff6b6b;">Error: ${error.message}</span>`;
+        setTimeout(() => {
+          if (loadingMsg && loadingMsg.parentNode) {
+            loadingMsg.remove();
+          }
+        }, 3000);
+      }
+      
+      return false; // Training failed
+      
+    } finally {
+      // Ensure training mode is reset
+      window.trainingMode = false;
+      
+      // Remove loading message after delay
+      setTimeout(() => {
+        if (loadingMsg && loadingMsg.parentNode) {
+          loadingMsg.remove();
+        }
+      }, 1000);
+    }
     
-    // Train AI on selected mode
-    console.log(`🤖 Training AI for ${playerCount}-player mode...`);
-    window.trainingMode = true;
-    await aiBrain.selfTrainAI(2000, 200);
-    window.trainingMode = false;
-    
-    // Restore original player count
-    numPlayersVar = originalPlayerCount;
-    
-    // Mark as trained
-    localStorage.setItem(trainingKey, 'true');
-    console.log(`✅ AI training complete for ${playerCount}-player mode!`);
-    
-    // Remove loading message
-    loadingMsg.remove();
-    
-    return true; // Trained
   } else {
     console.log(`✅ AI already trained for ${playerCount}-player mode`);
+    try {
+      const qSize = Object.keys(aiBrain.exportQ ? JSON.parse(aiBrain.exportQ()) : {}).length;
+      console.log(`📊 Current Q-table has ${qSize} learned states`);
+    } catch (e) {
+      console.log(`📊 Q-table exists but size couldn't be determined`);
+    }
     return false; // Already trained
   }
 }
+	
 	///
 	/* ===== Domino AI Brain (Q-learning) - insert ABOVE playAI() =====
    Stores Q-table in localStorage ("Domino_AI_Q").
@@ -1937,29 +1978,23 @@ function calculateReward(gameStateBefore, playerIndex, actionMove, gameStateAfte
     exportQ: () => JSON.stringify(Q),
     importQ: (json) => { Q = JSON.parse(json || "{}"); save(); },
     LS_KEY,
-    // Quick headless self-training using your existing functions (make sure setupGame & playTile exist)
-// Replace the existing selfTrainAI with this safer version
-async selfTrainAI(iterations = 200000, showEvery = 200, progressCallback = null) {
-  // Safety check: if training mode stuck, check timestamp
+async selfTrainAI(iterations = 200, showEvery = 200, progressCallback = null) {
+  // FORCE RESET if stuck
   if (window.trainingMode) {
-    const now = Date.now();
-    const lastTrainingTime = window.lastTrainingStartTime || 0;
-    
-    // If more than 5 seconds passed since training started, assume it's stuck
-    if (lastTrainingTime > 0 && now - lastTrainingTime > 5000) {
-      console.warn("⚠️ Training mode was stuck. Auto-resetting...");
-      window.trainingMode = false;
-      window.lastTrainingStartTime = null;
-    } else {
-      console.warn("⚠️ Training already in progress.");
-      return;
-    }
+    console.warn("⚠️ Training already in progress. Force resetting...");
+    window.trainingMode = false;
+    window.lastTrainingStartTime = null;
+    await new Promise(resolve => setTimeout(resolve, 100));
   }
   
   // Mark training start time
   window.trainingMode = true;
   window.lastTrainingStartTime = Date.now();
-  console.log(`🤖 selfTrainAI: starting ${iterations} games (silent mode).`);
+  console.log(`🤖 selfTrainAI: starting ${iterations} games for ${numPlayersVar}-player mode`);
+  console.log(`📊 Current Q-table size: ${Object.keys(Q).length} states`);
+
+  let consecutiveErrors = 0;
+  const MAX_CONSECUTIVE_ERRORS = 100;
 
   try {
     for (let g = 0; g < iterations; g++) {
@@ -1968,9 +2003,12 @@ async selfTrainAI(iterations = 200000, showEvery = 200, progressCallback = null)
 
         if (typeof gs.gameOver === 'undefined') gs.gameOver = false;
 
-        let safety = 200000;
+        let safety = 200;
+        let turnCount = 0;
 
-        while (!gs.gameOver && safety-- > 0) {
+        while (!gs.gameOver && safety-- > 0 && turnCount < 200) {
+          turnCount++;
+          
           const p = (typeof currentActivePlayerTurn === 'number') ? currentActivePlayerTurn
                     : (typeof gs.currentPlayer === 'number' ? gs.currentPlayer
                     : (typeof gs.turnIndex === 'number' ? gs.turnIndex : 0));
@@ -1982,7 +2020,14 @@ async selfTrainAI(iterations = 200000, showEvery = 200, progressCallback = null)
           const playerHand = gs.players[p];
           const validMoves = (typeof getValidMoves === "function") ? getValidMoves(playerHand, gs.board) : [];
 
-          const stateBefore = JSON.parse(JSON.stringify(gs));
+          // Use shallow copy instead of JSON for better performance
+          const stateBefore = {
+            players: gs.players.map(hand => hand.slice()),
+            board: gs.board ? {
+              leftEnd: gs.board.leftEnd ? {...gs.board.leftEnd} : null,
+              rightEnd: gs.board.rightEnd ? {...gs.board.rightEnd} : null
+            } : null
+          };
 
           let chosen;
           if (!validMoves || validMoves.length === 0) {
@@ -1998,64 +2043,129 @@ async selfTrainAI(iterations = 200000, showEvery = 200, progressCallback = null)
             }
 
             if (typeof playTile === "function") {
-              playTile(gs, chosen.tile, chosen.end);
+              const played = playTile(gs, chosen.tile, chosen.end);
+              if (!played) {
+                // If play failed, force end game
+                gs.gameOver = true;
+                break;
+              }
             } else {
               throw new Error("No playTile function found for training.");
             }
           }
 
-          const stateAfter = JSON.parse(JSON.stringify(gs));
+          // Use shallow copy for stateAfter too
+          const stateAfter = {
+            players: gs.players.map(hand => hand.slice()),
+            board: gs.board ? {
+              leftEnd: gs.board.leftEnd ? {...gs.board.leftEnd} : null,
+              rightEnd: gs.board.rightEnd ? {...gs.board.rightEnd} : null
+            } : null,
+            gameOver: gs.gameOver
+          };
 
           try {
             const reward = aiBrain.calculateReward(stateBefore, p, chosen, stateAfter);
             aiBrain.updateQ(stateBefore, p, chosen, reward, stateAfter);
           } catch (e) {
-            console.warn("aiBrain learning update failed for a step:", e && e.message ? e.message : e);
+            // Silently ignore learning errors during training
           }
 
           if (gs.gameOver) break;
         }
 
+        // Reset consecutive errors on success
+        consecutiveErrors = 0;
+        
+        // Clear game state to free memory
+        gs = null;
+
         // Progress logging with callback
-        if (g % showEvery === 0) {
-          // Update timestamp to show training is still active
+        if (g % showEvery === 0 || g === iterations - 1) {
+          // Update timestamp
           window.lastTrainingStartTime = Date.now();
           
-          // Update UI progress if callback provided
+          // Log progress
+          const qSize = Object.keys(Q).length;
+          console.log(`🎮 Training: ${g}/${iterations} games | Q-table: ${qSize} states`);
+          
+          // Update UI
           if (progressCallback && typeof progressCallback === 'function') {
-            progressCallback(g);
+            try {
+              progressCallback(g);
+            } catch (e) {
+              console.warn("Progress callback failed:", e);
+            }
           }
           
-          // Console logging (less frequent for 20k games)
-          if (g % (showEvery * 5) === 0) {
-            console.log(`selfTrainAI: completed games ${g} / ${iterations}`);
-          }
-          
-          // Minimal yield to prevent blocking UI updates
+          // Yield to event loop every 200 games
           await new Promise(resolve => setTimeout(resolve, 0));
+          
+          // Save periodically (every 200 games)
+          if (g % 200 === 0 && g > 0) {
+            try { 
+              save(); 
+              console.log(`💾 Checkpoint save at ${g} games`);
+            } catch (e) { 
+              console.warn("Save failed:", e);
+            }
+          }
         }
 
       } catch (err) {
-        console.warn(`⚠️ selfTrainAI: game ${g} failed and was skipped – reason:`, err && err.message ? err.message : err);
-        await new Promise(resolve => setTimeout(resolve, 0));
+        consecutiveErrors++;
+        
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          console.error(`❌ Too many consecutive errors (${consecutiveErrors}). Stopping training.`);
+          throw new Error("Training failed: too many consecutive errors");
+        }
+        
+        if (g % 1000 === 0) {
+          console.warn(`⚠️ Game ${g} failed (${consecutiveErrors} consecutive):`, err.message || err);
+        }
         continue;
       }
     }
 
     // Final progress update
     if (progressCallback && typeof progressCallback === 'function') {
-      progressCallback(iterations);
+      try {
+        progressCallback(iterations);
+      } catch (e) {
+        // Ignore callback errors
+      }
     }
 
-    try { save(); } catch (e) { /* ignore */ }
+    // Final save
+    try { 
+      save(); 
+      console.log(`💾 Final save completed`);
+    } catch (e) { 
+      console.error("Final save failed:", e);
+    }
+    
+    // SHOW TRAINING RESULTS
+    const finalQSize = Object.keys(Q).length;
+    console.log(`✅ Training complete! Learned ${finalQSize} unique game states`);
+    
+    // Only show sample if Q has data
+    if (finalQSize > 0) {
+      const samples = Object.entries(Q).slice(0, 3).map(([state, actions]) => ({
+        state: state.substring(0, 50) + '...',
+        actions: Object.keys(actions).length,
+        bestAction: Object.entries(actions).sort((a, b) => b[1] - a[1])[0]
+      }));
+      console.log(`📊 Sample Q-values:`, samples);
+    }
     
   } catch (error) {
     console.error("❌ Training failed:", error);
+    throw error; // Re-throw so trainAIForMode knows it failed
   } finally {
-    // ALWAYS reset training mode, even if error occurs
+    // ALWAYS reset training mode
     window.trainingMode = false;
     window.lastTrainingStartTime = null;
-    console.log(`✅ selfTrainAI finished. Q saved to localStorage key: ${LS_KEY}`);
+    console.log(`💾 Q-table saved to localStorage key: ${LS_KEY}`);
   }
 }
  };
@@ -2324,7 +2434,7 @@ function addTile(t) {
         const valueDifference = minSimOpponent - mySimValue;
         score += valueDifference * 100;
       } else {
-        score -= 20000;
+        score -= 2000;
         const valueDifference = mySimValue - minSimOpponent;
         score -= valueDifference * 100;
       }
