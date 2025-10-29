@@ -845,7 +845,7 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.0.2</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.0.3</div>
 
 <script>
   // PWA Install Script
@@ -905,7 +905,6 @@ let trainingMode = false;
     let tileMode = 'Close';
     let backgroundColor = '#444';
     let bet = 10000;
-    let isOverallFirstGame = true;
     let draggedTile = null;
     let numPlayersVar = 4;
     let gameState = null;
@@ -916,7 +915,10 @@ let trainingMode = false;
 	
     // Updated global variables and initialization
 let scores = [10000000, 10000000, 10000000, 10000000];
-
+///
+let isOverallFirstGame = true;
+let isTrueFirstGame = true; // ⭐ NEW: Track if it's the very first game ever
+///
 // === UNIFIED TRAINING MODE SYSTEM ===
 // Place this BEFORE any game code (after variable declarations)
 (function initTrainingMode() {
@@ -1198,71 +1200,84 @@ function resumeAudioContext() {
     function rotateTile(tile) {
       return { top: tile.bottom, bottom: tile.top };
     }
+///
+function setupGame() {
+  const gameTiles = [...tiles];
+  shuffle(gameTiles);
+  let players = Array(4).fill().map(() => []);
+  let boneyard = [];
+  let playerOrder = numPlayersVar === 2 ? [0, 2] : numPlayersVar === 3 ? [0, 1, 2] : [0, 1, 2, 3];
+  
+// ⭐ FIX: Force "highest double" rule if player count changes and winner is invalid
+  if (!playerOrder.includes(nextGameStarter)) {
+    nextGameStarter = 0;
+    isOverallFirstGame = true; // This re-engages the highest double rule
+    isTrueFirstGame = true; // Also reset this to be consistent
+  }
+  
+  for (let p of playerOrder) {
+    players[p] = gameTiles.splice(0, numTiles);
+  }
+  boneyard = gameTiles;
 
-    function setupGame() {
-      const gameTiles = [...tiles];
-      shuffle(gameTiles);
-      let players = Array(4).fill().map(() => []);
-      let boneyard = [];
-      let playerOrder = numPlayersVar === 2 ? [0, 2] : numPlayersVar === 3 ? [0, 1, 2] : [0, 1, 2, 3];
-      
-      for (let p of playerOrder) {
-        players[p] = gameTiles.splice(0, numTiles);
+  const board = {
+    tiles: [],
+    leftEnd: null,
+    rightEnd: null,
+    offsetX: 0,
+    offsetY: 0
+  };
+
+  let highestDouble = null;
+  let starter = 0;
+  
+  for (let p of playerOrder) {
+    const doubles = players[p].filter(t => isDouble(t));
+    if (doubles.length > 0) {
+      const playerHighest = doubles.reduce((max, t) => t.top > max.top ? t : max, doubles[0]);
+      if (!highestDouble || playerHighest.top > highestDouble.top) {
+        highestDouble = playerHighest;
+        starter = p;
       }
-      boneyard = gameTiles;
-
-      const board = {
-        tiles: [],
-        leftEnd: null,
-        rightEnd: null,
-        offsetX: 0,
-        offsetY: 0
-      };
-
-      let highestDouble = null;
-      let starter = 0;
-      for (let p of playerOrder) {
-        const doubles = players[p].filter(t => isDouble(t));
-        if (doubles.length > 0) {
-          const playerHighest = doubles.reduce((max, t) => t.top > max.top ? t : max, doubles[0]);
-          if (!highestDouble || playerHighest.top > highestDouble.top) {
-            highestDouble = playerHighest;
-            starter = p;
-          }
-        }
-      }
-
-      const isThisFirstGame = isOverallFirstGame;
-      if (isThisFirstGame) {
-        currentActivePlayerTurn = starter;
-        isOverallFirstGame = false;
-      } else {
-        currentActivePlayerTurn = nextGameStarter;
-      }
-
-      const roundHistory = [];
-
-      return {
-        players, 
-        boneyard, 
-        board, 
-        prevBoard: null, 
-        gameOver: false, 
-        roundHistory, 
-        selectedIndex: -1, 
-        isThisFirstGame, 
-        playerOrder, 
-        highestDouble
-      };
     }
+  }
 
-// Updated startNewGame function (remove scores reset to persist previous scores)
+  const isThisFirstGame = isOverallFirstGame;
+  if (isThisFirstGame) {
+    currentActivePlayerTurn = starter;
+    isOverallFirstGame = false;
+    isTrueFirstGame = false; // ⭐ Mark that we're past the true first game
+  } else {
+    if (playerOrder.includes(nextGameStarter)) {
+      currentActivePlayerTurn = nextGameStarter;
+    } else {
+      currentActivePlayerTurn = starter;
+    }
+  }
+
+  const roundHistory = [];
+
+  return {
+    players, 
+    boneyard, 
+    board, 
+    prevBoard: null, 
+    gameOver: false, 
+    roundHistory, 
+    selectedIndex: -1, 
+    isThisFirstGame, 
+    playerOrder, 
+    highestDouble
+  };
+}
+
+///
 function startNewGame() {
   isOverallFirstGame = true;
+  isTrueFirstGame = true; // ⭐ Reset to true when explicitly starting new game
   currentActivePlayerTurn = 0;
   nextGameStarter = 0;
   lastValidPlayer = 0;
-  // Removed: scores = [10000000, 10000000, 10000000, 10000000]; // Persist previous scores
   
   document.getElementById('new-game').style.display = 'none';
   gameState = setupGame();
@@ -1272,7 +1287,7 @@ function startNewGame() {
     setTimeout(() => playAI(gameState), 1500);
   }
 }
-
+///
     document.getElementById('close-options').addEventListener('click', () => {
       document.getElementById('options-menu').style.display = 'none';
     });
@@ -1311,30 +1326,35 @@ document.addEventListener('click', (e) => {
 });
 ///
 document.getElementById('numPlayers').onchange = async (e) => {
-  // Prevent changing players during active game
   if (gameState && !gameState.gameOver) {
     safeAlert('Cannot change number of Players during game!');
-    e.target.value = numPlayersVar; // Revert to current value
+    e.target.value = numPlayersVar;
     return;
   }
   
   const newPlayerCount = parseInt(e.target.value);
   
-  // Close options menu immediately (so training message is visible)
   document.getElementById('options-menu').style.display = 'none';
   
-  // Train AI if needed for this mode
   await trainAIForMode(newPlayerCount);
   
-  // Now update the game
+// ⭐ FIX: Force "highest double" rule if player count changes and winner is invalid
+  const newPlayerOrder = newPlayerCount === 2 ? [0, 2] : 
+                         newPlayerCount === 3 ? [0, 1, 2] : 
+                         [0, 1, 2, 3];
+
+  if (!newPlayerOrder.includes(nextGameStarter)) {
+    nextGameStarter = 0;
+    isOverallFirstGame = true; // This re-engages the highest double rule
+    isTrueFirstGame = true; // Also reset this to be consistent
+  }
+  
   numPlayersVar = newPlayerCount;
   
-  // Preserve last winner priority (don't call startNewGame)
   document.getElementById('new-game').style.display = 'none';
-  gameState = setupGame(); // Uses existing nextGameStarter and isOverallFirstGame
+  gameState = setupGame();
   renderGame(gameState);
   
-  // If it's AI's turn, let them play
   if (!gameState.gameOver && currentActivePlayerTurn !== 0) {
     setTimeout(() => playAI(gameState), 1500);
   }
@@ -2049,6 +2069,12 @@ function safeAlert(msg) {
 }
 	///
 function playAI(gameState) {
+// ⭐ FIX: Add a safety guard to never run AI logic for the human player (0)
+  if (currentActivePlayerTurn === 0) {
+    console.error("⚠️ playAI was incorrectly called for Player 0. Aborting.");
+    return; 
+  }
+  ///
   const { players, board, roundHistory, isThisFirstGame, boneyard, playerOrder } = gameState; 
 
   // --- SAFETY CHECK FOR TURN INDEX ---
@@ -2321,7 +2347,31 @@ function addTile(t) {
     // PRIORITY BRANCHING: DANGER MODE vs NORMAL MODE
     if (isInDanger || isAtRisk) {
       let tileValue = tile.top + tile.bottom;
-
+// ⭐ NEW: Check if playing this tile will trigger [0-0] = 13 rule
+if (tileValue === 0) { // It's [0-0]
+  // Count zeros currently visible (before playing this tile)
+  let zerosOnTable = 0;
+  if (board && Array.isArray(board.tiles)) {
+    board.tiles.forEach(t => {
+      if (t.tile.top === 0) zerosOnTable++;
+      if (t.tile.bottom === 0) zerosOnTable++;
+    });
+  }
+  if (Array.isArray(roundHistory)) {
+    roundHistory.forEach(entry => {
+      if (entry && entry.playedTile) {
+        const t = entry.playedTile;
+        if (t.top === 0) zerosOnTable++;
+        if (t.bottom === 0) zerosOnTable++;
+      }
+    });
+  }
+  
+  // If 6+ zeros already visible, playing [0-0] means it's worth 13
+  if (zerosOnTable >= 6) {
+    tileValue = 13;
+  }
+}
       if (isInDanger) {
         score += tileValue * 150;
         if (tileValue >= 10) score += 2500;
@@ -2398,6 +2448,31 @@ function addTile(t) {
 
       if (has_boneyard) {
         let tileValue = tile.top + tile.bottom;
+		// ⭐ NEW: Check if playing this tile will trigger [0-0] = 13 rule
+if (tileValue === 0) { // It's [0-0]
+  // Count zeros currently visible (before playing this tile)
+  let zerosOnTable = 0;
+  if (board && Array.isArray(board.tiles)) {
+    board.tiles.forEach(t => {
+      if (t.tile.top === 0) zerosOnTable++;
+      if (t.tile.bottom === 0) zerosOnTable++;
+    });
+  }
+  if (Array.isArray(roundHistory)) {
+    roundHistory.forEach(entry => {
+      if (entry && entry.playedTile) {
+        const t = entry.playedTile;
+        if (t.top === 0) zerosOnTable++;
+        if (t.bottom === 0) zerosOnTable++;
+      }
+    });
+  }
+  
+  // If 6+ zeros already visible, playing [0-0] means it's worth 13
+  if (zerosOnTable >= 6) {
+    tileValue = 13;
+  }
+}
         if (isDouble(tile)) tileValue += 5;
 
         if (!isBlock) {
@@ -2545,6 +2620,31 @@ function addTile(t) {
           score += pipDiversity * 50;
 
           let tileValue = tile.top + tile.bottom;
+		  // ⭐ NEW: Check if playing this tile will trigger [0-0] = 13 rule
+if (tileValue === 0) { // It's [0-0]
+  // Count zeros currently visible (before playing this tile)
+  let zerosOnTable = 0;
+  if (board && Array.isArray(board.tiles)) {
+    board.tiles.forEach(t => {
+      if (t.tile.top === 0) zerosOnTable++;
+      if (t.tile.bottom === 0) zerosOnTable++;
+    });
+  }
+  if (Array.isArray(roundHistory)) {
+    roundHistory.forEach(entry => {
+      if (entry && entry.playedTile) {
+        const t = entry.playedTile;
+        if (t.top === 0) zerosOnTable++;
+        if (t.bottom === 0) zerosOnTable++;
+      }
+    });
+  }
+  
+  // If 6+ zeros already visible, playing [0-0] means it's worth 13
+  if (zerosOnTable >= 6) {
+    tileValue = 13;
+  }
+}
           if (isDouble(tile)) tileValue += 10;
           score += tileValue * 10;
 
@@ -2585,13 +2685,42 @@ function addTile(t) {
     }
 
     // FINAL: baseline tie-breakers
-    if (myTileCount <= 3) {
-      score += -(tile.top + tile.bottom) * 20;
-      const afterHand = clone(simPlayers[currentActivePlayerTurn]);
-      const setVals = new Set();
-      afterHand.forEach(t => { setVals.add(t.top); setVals.add(t.bottom); });
-      score += (10 - setVals.size) * 100;
+   // FINAL: baseline tie-breakers
+if (myTileCount <= 3) {
+  let tileValue = tile.top + tile.bottom;
+  
+  // ⭐ NEW: Check if playing this tile will trigger [0-0] = 13 rule
+  if (tileValue === 0) { // It's [0-0]
+    // Count zeros currently visible (before playing this tile)
+    let zerosOnTable = 0;
+    if (board && Array.isArray(board.tiles)) {
+      board.tiles.forEach(t => {
+        if (t.tile.top === 0) zerosOnTable++;
+        if (t.tile.bottom === 0) zerosOnTable++;
+      });
     }
+    if (Array.isArray(roundHistory)) {
+      roundHistory.forEach(entry => {
+        if (entry && entry.playedTile) {
+          const t = entry.playedTile;
+          if (t.top === 0) zerosOnTable++;
+          if (t.bottom === 0) zerosOnTable++;
+        }
+      });
+    }
+    
+    // If 6+ zeros already visible, playing [0-0] means it's worth 13
+    if (zerosOnTable >= 6) {
+      tileValue = 13;
+    }
+  }
+  
+  score += -tileValue * 20; // Now uses correct value
+  const afterHand = clone(simPlayers[currentActivePlayerTurn]);
+  const setVals = new Set();
+  afterHand.forEach(t => { setVals.add(t.top); setVals.add(t.bottom); });
+  score += (10 - setVals.size) * 100;
+}
 ///
 // === NEW: Get AI Brain's opinion ===
     let qValue = 0;
