@@ -845,7 +845,7 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.0.1</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.0.2</div>
 
 <script>
   // PWA Install Script
@@ -1778,6 +1778,16 @@ const aiBrain = (function () {
   let Q = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
 
   function save() { localStorage.setItem(LS_KEY, JSON.stringify(Q)); }
+  
+  ///
+  // Helper to get Q-value for a state-action pair
+  function getQValue(gameState, playerIndex, actionMove) {
+    const k = stateKey(gameState, playerIndex);
+    if (!Q[k]) return 0;
+    const ak = actionKey(actionMove);
+    return Q[k][ak] ?? 0; // Return 0 if this move has never been seen
+  }
+  ///
 
   // Create a compact but descriptive state key using board ends and sorted hand signature
   function stateKey(gameState, playerIndex) {
@@ -1785,9 +1795,9 @@ const aiBrain = (function () {
       const board = gameState.board || {};
       const left = board.leftEnd ? board.leftEnd.value ?? board.leftEnd : (board.leftEnd ?? "N");
       const right = board.rightEnd ? board.rightEnd.value ?? board.rightEnd : (board.rightEnd ?? "N");
-      const hand = (gameState.players && Array.isArray(gameState.players[playerIndex]))
-        ? gameState.players[playerIndex].map(t => `${t[0]}${t[1]}`).sort().join(',')
-        : "H";
+     const hand = (gameState.players && Array.isArray(gameState.players[playerIndex]))
+  ? gameState.players[playerIndex].map(t => `${t.top}${t.bottom}`).sort().join(',')
+  : "H";
       return `${left}_${right}|P${playerIndex}|${hand}`;
     } catch (e) {
       return "ERR";
@@ -1900,6 +1910,7 @@ function calculateReward(gameStateBefore, playerIndex, actionMove, gameStateAfte
   return {
     chooseMove,
     updateQ,
+	getQValue, // <-- ADD THIS LINE
     calculateReward,
     save: () => { save(); },
     load: () => { Q = JSON.parse(localStorage.getItem(LS_KEY) || "{}"); },
@@ -1908,7 +1919,7 @@ function calculateReward(gameStateBefore, playerIndex, actionMove, gameStateAfte
     LS_KEY,
     // Quick headless self-training using your existing functions (make sure setupGame & playTile exist)
 // Replace the existing selfTrainAI with this safer version
-async selfTrainAI(iterations = 2000, showEvery = 200, progressCallback = null) {
+async selfTrainAI(iterations = 200000, showEvery = 200, progressCallback = null) {
   // Safety check: if training mode stuck, check timestamp
   if (window.trainingMode) {
     const now = Date.now();
@@ -1937,7 +1948,7 @@ async selfTrainAI(iterations = 2000, showEvery = 200, progressCallback = null) {
 
         if (typeof gs.gameOver === 'undefined') gs.gameOver = false;
 
-        let safety = 20000;
+        let safety = 200000;
 
         while (!gs.gameOver && safety-- > 0) {
           const p = (typeof currentActivePlayerTurn === 'number') ? currentActivePlayerTurn
@@ -2064,12 +2075,19 @@ function playAI(gameState) {
   function countSeenPips() {
     const counts = Array(7).fill(0);
 
-    function addTile(t) {
+function addTile(t) {
       if (!t) return;
-      counts[t.top] = (counts[t.top] || 0) + 1;
-      counts[t.bottom] = (counts[t.bottom] || 0) + 1;
+      
+      if (t.top === t.bottom) {
+        // If it's a double, only count it once
+        counts[t.top] = (counts[t.top] || 0) + 1;
+      } else {
+        // Otherwise, count both pips
+        counts[t.top] = (counts[t.top] || 0) + 1;
+        counts[t.bottom] = (counts[t.bottom] || 0) + 1;
+      }
     }
-
+	
     // Board tiles (visible)
     if (board && Array.isArray(board.tiles)) {
       board.tiles.forEach(addTile);
@@ -2574,37 +2592,47 @@ function playAI(gameState) {
       afterHand.forEach(t => { setVals.add(t.top); setVals.add(t.bottom); });
       score += (10 - setVals.size) * 100;
     }
+///
+// === NEW: Get AI Brain's opinion ===
+    let qValue = 0;
+    if (typeof aiBrain === 'object' && typeof aiBrain.getQValue === 'function') {
+      // Use the new function to get the brain's learned score
+      qValue = aiBrain.getQValue(stateBefore, currentActivePlayerTurn, move);
+    }
 
-    // store score for candidate selection
-    moveScores.push({ move, score });
+    // === NEW: Combine scores ===
+    // W_h = Heuristic Weight, W_q = Q-Learning Weight
+    // We can "tune" these. Start by trusting the heuristic 100% and the brain 50%.
+    const W_h = 1.0; 
+    const W_q = 50.0; // Tunable: How much to trust the AI brain. 
+                      // Needs to be high to compete with heuristic scores (like +8000)
 
-    if (score > bestMove.score) {
-      bestMove = { tile, end, score };
+    // The final score is a weighted sum of both "brains"
+    const finalScore = (score * W_h) + (qValue * W_q);
+    
+    // Store the *combined* score
+    moveScores.push({ move, score: finalScore }); 
+
+    if (finalScore > bestMove.score) {
+      bestMove = { tile, end, score: finalScore };
     }
   } // end for validMoves
 
-  // === SELECTION: combine heuristic scores with Q-learner ===
-  let chosenMove = null;
+///
+// === SELECTION: Choose the best *combined* score ===
+  // The 'bestMove' variable now holds the move with the highest combined score
+  // from the Heuristic Engine AND the AI Brain.
 
-  // If aiBrain exists, give it top candidates to choose among.
-  if (typeof aiBrain === 'object' && typeof aiBrain.chooseMove === 'function' && moveScores.length > 0) {
-    // sort descending by score
-    moveScores.sort((a, b) => b.score - a.score);
-    const topScore = moveScores[0].score;
-    // include any moves within 10% of top or up to 4 moves
-    const threshold = topScore - Math.abs(topScore) * 0.10;
-    const topCandidates = moveScores.filter((ms, idx) => (ms.score >= threshold) && idx < 8).map(ms => ms.move);
+  let chosenMove = { tile: bestMove.tile, end: bestMove.end };
 
-    // let aiBrain pick among topCandidates; allow some exploration
-    chosenMove = aiBrain.chooseMove(gameState, currentActivePlayerTurn, topCandidates, /*epsilon*/ undefined);
-    // aiBrain returns a move object; if it returns null or invalid, fallback to bestMove
-    if (!chosenMove || !chosenMove.tile) {
-      chosenMove = { tile: bestMove.tile, end: bestMove.end };
-    }
-  } else {
-    // fallback: deterministic heuristic pick
-    chosenMove = { tile: bestMove.tile, end: bestMove.end };
+  // We must still include "exploration" for the AI to learn.
+  // This (epsilon) is the *real* job for aiBrain.chooseMove, not picking.
+  // For simplicity, we can add a simple epsilon-greedy check here:
+  const epsilon = 0.1; // 10% chance to explore a random move
+  if (Math.random() < epsilon && validMoves.length > 0) {
+     chosenMove = validMoves[Math.floor(Math.random() * validMoves.length)];
   }
+
 
   // --- Play the chosen move normally ---
   if (chosenMove && chosenMove.tile) {
