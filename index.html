@@ -845,7 +845,7 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.0.5</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.0.6</div>
 
 <script>
   // PWA Install Script
@@ -1740,14 +1740,14 @@ async function trainAIForMode(playerCount) {
     const loadingMsg = document.createElement('div');
     loadingMsg.id = 'ai-training-msg';
     loadingMsg.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.9);color:#0f0;padding:20px 40px;border:2px solid #0f0;border-radius:10px;z-index:10001;font-size:18px;text-align:center;';
-    loadingMsg.innerHTML = `🤖 Training AI for ${playerCount}-player mode...<br><span style="font-size:14px;color:#add8e6;">Progress: 0/200 games (0%)</span>`;
+    loadingMsg.innerHTML = `🤖 Training AI for ${playerCount}-player mode...<br><span style="font-size:14px;color:#add8e6;">Progress: 0/2000 games (0%)</span>`;
     document.body.appendChild(loadingMsg);
     
     // Progress callback to update UI
     const updateProgress = (gamesCompleted) => {
       if (loadingMsg && loadingMsg.parentNode) {
-        const percent = Math.floor((gamesCompleted / 200) * 100);
-        loadingMsg.innerHTML = `🤖 Training AI for ${playerCount}-player mode...<br><span style="font-size:14px;color:#add8e6;">Progress: ${gamesCompleted}/200 games (${percent}%)</span>`;
+        const percent = Math.floor((gamesCompleted / 2000) * 100);
+        loadingMsg.innerHTML = `🤖 Training AI for ${playerCount}-player mode...<br><span style="font-size:14px;color:#add8e6;">Progress: ${gamesCompleted}/2000 games (${percent}%)</span>`;
       }
     };
     
@@ -1766,7 +1766,7 @@ async function trainAIForMode(playerCount) {
 	  const renderGameBackup = window.renderGame;
 window.renderGame = function() {}; // disable rendering
 	  ///
-      await aiBrain.selfTrainAI(200, 20, updateProgress);
+      await aiBrain.selfTrainAI(2000, 500, updateProgress);
       
 	  ///
 	  window.renderGame = renderGameBackup;
@@ -1838,51 +1838,142 @@ window.renderGame = function() {}; // disable rendering
     // else ignore silently during AI self-training
   };
 })();
+///
 
 const aiBrain = (function () {
   const LS_KEY = "Domino_AI_Q";
-  const alpha = 0.12;   // learning rate (tweakable)
-  const gamma = 0.9;    // discount factor
-  const epsilonDefault = 0.12; // exploration rate (tweakable)
-
+  const alpha = 0.12;
+  const gamma = 0.9;
+  const epsilonDefault = 0.12;
+  
+  // ⭐ SEPARATE CONTROLS
+  const TRAINING_THRESHOLD = 0.02;  // Keep learning during training (LOW)
+  const NORMAL_CLEANING = 0.50;     // Light periodic cleaning during training
+  const FINAL_CLEANING = 0.65;      // Final aggressive clean (MODERATE)
+  
+  // Cleaning thresholds
+  const ACTION_THRESHOLD_NORMAL = NORMAL_CLEANING * 0.12;      // = 0.06
+  const ACTION_THRESHOLD_AGGRESSIVE = FINAL_CLEANING * 0.20;   // = 0.13 (not too high!)
+  const STATE_AVG_THRESHOLD_NORMAL = NORMAL_CLEANING * 0.08;   // = 0.04
+  const STATE_AVG_THRESHOLD_AGGRESSIVE = FINAL_CLEANING * 0.15; // = 0.098
+  
   let Q = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
-
   let saveCounter = 0;
+  let updateCounter = 0;
+///
+function cleanQTable(Q, aggressive = false) {
+  const stats = {
+    originalStates: Object.keys(Q).length,
+    originalActions: 0,
+    skippedEmpty: 0,
+    skippedWeak: 0,
+    skippedLowValue: 0,
+    keptStates: 0,
+    keptActions: 0
+  };
+  
+  for (const actions of Object.values(Q)) {
+    stats.originalActions += Object.keys(actions || {}).length;
+  }
+  
+  const cleaned = {};
+  
+  // Use pre-calculated thresholds based on CLEANING_AGGRESSIVENESS
+  const ACTION_THRESHOLD = aggressive ? ACTION_THRESHOLD_AGGRESSIVE : ACTION_THRESHOLD_NORMAL;
+  const STATE_AVG_THRESHOLD = aggressive ? STATE_AVG_THRESHOLD_AGGRESSIVE : STATE_AVG_THRESHOLD_NORMAL;
+  const MIN_ACTIONS_PER_STATE = aggressive ? 2 : 1;
+  
+  for (const [state, actions] of Object.entries(Q)) {
+    if (!actions || Object.keys(actions).length === 0) {
+      stats.skippedEmpty++;
+      continue;
+    }
+    
+    const filteredActions = {};
+    let totalQ = 0;
+    let strongActions = 0;
+    
+    for (const [action, qValue] of Object.entries(actions)) {
+      const absQ = Math.abs(qValue);
+      
+      if (absQ >= ACTION_THRESHOLD) {
+        filteredActions[action] = qValue;
+        totalQ += absQ;
+        strongActions++;
+        stats.keptActions++;
+      } else {
+        stats.skippedWeak++;
+      }
+    }
+    
+    if (strongActions < MIN_ACTIONS_PER_STATE) {
+      stats.skippedLowValue++;
+      continue;
+    }
+    
+    const avgQ = strongActions > 0 ? totalQ / strongActions : 0;
+    if (avgQ < STATE_AVG_THRESHOLD) {
+      stats.skippedLowValue++;
+      continue;
+    }
+    
+    cleaned[state] = filteredActions;
+    stats.keptStates++;
+  }
+  
+  const reduction = stats.originalStates > 0 
+    ? ((1 - stats.keptStates / stats.originalStates) * 100).toFixed(1)
+    : 0;
+  
+  if (!window.trainingMode) {
+    console.log(`🧹 Q-table cleaned (aggressiveness: ${(CLEANING_AGGRESSIVENESS * 100).toFixed(0)}%): ${stats.originalStates}→${stats.keptStates} states (${reduction}% reduction)`);
+    console.log(`   📊 Actions: ${stats.originalActions}→${stats.keptActions}`);
+    console.log(`   🗑️  Removed: ${stats.skippedEmpty} empty, ${stats.skippedWeak} weak actions, ${stats.skippedLowValue} low-value states`);
+  }
+  
+  return { cleaned, stats };
+}
+
+///
 function saveQ(force = false) {
   saveCounter++;
+  
+  // Fast: just save, no cleaning
   if (force || saveCounter % 100 === 0) {
     localStorage.setItem(LS_KEY, JSON.stringify(Q));
   }
 }
-
-  ///
-  // Helper to get Q-value for a state-action pair
-  function getQValue(gameState, playerIndex, actionMove) {
-    const k = stateKey(gameState, playerIndex);
-    if (!Q[k]) return 0;
+///  
+function getQValue(gameState, playerIndex, actionMove) {
+  const k = stateKey(gameState, playerIndex);
+  if (!Q[k] || typeof Q[k] !== 'object') return 0;
+  
+  try {
     const ak = actionKey(actionMove);
-    return Q[k][ak] ?? 0; // Return 0 if this move has never been seen
+    return Q[k][ak] ?? 0;
+  } catch (e) {
+    return 0;
   }
-  ///
+}
+///
 
-  // Create a compact but descriptive state key using board ends and sorted hand signature
+  // Create a compact but descriptive state key
   function stateKey(gameState, playerIndex) {
     try {
       const board = gameState.board || {};
       const left = board.leftEnd ? board.leftEnd.value ?? board.leftEnd : (board.leftEnd ?? "N");
       const right = board.rightEnd ? board.rightEnd.value ?? board.rightEnd : (board.rightEnd ?? "N");
-     const hand = (gameState.players && Array.isArray(gameState.players[playerIndex]))
-  ? gameState.players[playerIndex].map(t => `${t.top}${t.bottom}`).sort().join(',')
-  : "H";
+      const hand = (gameState.players && Array.isArray(gameState.players[playerIndex]))
+        ? gameState.players[playerIndex].map(t => `${t.top}${t.bottom}`).sort().join(',')
+        : "H";
       return `${left}_${right}|P${playerIndex}|${hand}`;
     } catch (e) {
       return "ERR";
     }
   }
 
-  // Turn a move object into an action key string (must be stable)
+  // Turn a move object into an action key string
   function actionKey(move) {
-    // move may be { tile: [a,b], end: 'left'|'right' } or string; support both
     if (!move) return "PASS";
     if (typeof move === "string") return move;
     const t = Array.isArray(move.tile) ? move.tile.join(':') : JSON.stringify(move.tile);
@@ -1890,7 +1981,7 @@ function saveQ(force = false) {
     return `${t}@${end}`;
   }
 
-  // ε-greedy choice from validMoves (array). pass epsilon to override exploration.
+  // ε-greedy choice from validMoves
   function chooseMove(gameState, playerIndex, validMoves, epsilon = epsilonDefault) {
     if (!Array.isArray(validMoves) || validMoves.length === 0) return null;
     const key = stateKey(gameState, playerIndex);
@@ -1912,89 +2003,126 @@ function saveQ(force = false) {
     return best;
   }
 
-  // simple helper to get max Q for a given state (used in update rule)
-  function maxQForStateKey(k) {
-    if (!Q[k]) return 0;
+  // Get max Q for a given state
+  ///
+function maxQForStateKey(k) {
+  if (!Q[k] || typeof Q[k] !== 'object') return 0;
+  
+  try {
     const vals = Object.values(Q[k]);
     if (vals.length === 0) return 0;
     return Math.max(...vals);
+  } catch (e) {
+    return 0;
   }
+}
+///
+  // Update Q-table with immediate weak-value filtering
+  ///
+function updateQ(gameState, playerIndex, actionMove, reward, nextGameState) {
+  const s = stateKey(gameState, playerIndex);
+  const s2 = stateKey(nextGameState, playerIndex);
+  
+  if (!Q[s] || typeof Q[s] !== 'object') Q[s] = {};
+  if (!Q[s2] || typeof Q[s2] !== 'object') Q[s2] = {};
 
-  // Update Q-table after taking action in state -> nextState with observed reward
-  function updateQ(gameState, playerIndex, actionMove, reward, nextGameState) {
-    const s = stateKey(gameState, playerIndex);
-    const s2 = stateKey(nextGameState, playerIndex);
-    if (!Q[s]) Q[s] = {};
-    if (!Q[s2]) Q[s2] = {};
-
-    const a = actionKey(actionMove);
-    const old = Q[s][a] ?? 0;
-    const maxNext = maxQForStateKey(s2);
-    const updated = old + alpha * (reward + gamma * maxNext - old);
+  const a = actionKey(actionMove);
+  const old = Q[s][a] ?? 0;
+  const maxNext = maxQForStateKey(s2);
+  const updated = old + alpha * (reward + gamma * maxNext - old);
+  
+  // ⭐ USE LOW THRESHOLD DURING TRAINING (keep most learning)
+  if (Math.abs(updated) >= TRAINING_THRESHOLD) {
     Q[s][a] = updated;
-    // Minor save every update (keeps learning durable). If performance matters, save less often.
-    saveQ();
+  } else if (Q[s][a] !== undefined) {
+    delete Q[s][a];
   }
-
-  // Reward function tailored to your real game:
-  // - placing a tile: small positive
-  // - playing a double: bonus
-  // - winning (hand empties): big positive
-  // - if the round ends and the player did not win: penalty according to leftover pip count (optional)
-// Reward function tailored to your real game with [0-0] = 13 rule
-function calculateReward(gameStateBefore, playerIndex, actionMove, gameStateAfter) {
-  // base reward for placing a tile
-  let r = 0.5;
-
-  // if actionMove is PASS or null -> small negative to discourage passing when playable
-  if (!actionMove || actionMove === "PASS") r = -0.1;
-
-  // if played a double (tile is [x,x]), give extra
+  
+  // ⭐ Only remove TRULY empty states during training
   try {
-    const t = actionMove && actionMove.tile ? actionMove.tile : null;
-    if (t && t.top !== undefined && t.bottom !== undefined && t.top === t.bottom) {
-      r += 0.4;
+    if (Q[s] && typeof Q[s] === 'object' && Object.keys(Q[s]).length === 0) {
+      delete Q[s];
     }
-  } catch (e) { /* ignore */ }
-
-  // winning detection: if after move player's hand length is zero => win bonus
-  try {
-    const playersAfter = gameStateAfter.players || [];
-    if (Array.isArray(playersAfter[playerIndex]) && playersAfter[playerIndex].length === 0) {
-      r += 8; // large win bonus
+    if (Q[s2] && typeof Q[s2] === 'object' && Object.keys(Q[s2]).length === 0) {
+      delete Q[s2];
     }
-  } catch (e) {}
+  } catch (e) {
+    // Silently ignore
+  }
+  
+  saveQ();
+}
+///
+  // Reward function with [0-0] = 13 rule
+  function calculateReward(gameStateBefore, playerIndex, actionMove, gameStateAfter) {
+    let r = 0.5;
 
-  // if game ended and this player didn't win, penalty based on ACTUAL pip sum (with [0-0] = 13 rule)
-  if (gameStateAfter && gameStateAfter.gameOver) {
+    if (!actionMove || actionMove === "PASS") r = -0.1;
+
+    try {
+      const t = actionMove && actionMove.tile ? actionMove.tile : null;
+      if (t && t.top !== undefined && t.bottom !== undefined && t.top === t.bottom) {
+        r += 0.4;
+      }
+    } catch (e) { /* ignore */ }
+
     try {
       const playersAfter = gameStateAfter.players || [];
-      if (Array.isArray(playersAfter[playerIndex]) && playersAfter[playerIndex].length > 0) {
-        // Use computePlayerValues to get CORRECT hand value (respects [0-0] = 13 rule)
-        const actualValues = computePlayerValues(playersAfter);
-        const actualHandValue = actualValues[playerIndex];
-        
-        // Penalty scaled by actual hand value
-        r -= Math.min(3, actualHandValue / 15);
+      if (Array.isArray(playersAfter[playerIndex]) && playersAfter[playerIndex].length === 0) {
+        r += 8;
       }
     } catch (e) {}
+
+    if (gameStateAfter && gameStateAfter.gameOver) {
+      try {
+        const playersAfter = gameStateAfter.players || [];
+        if (Array.isArray(playersAfter[playerIndex]) && playersAfter[playerIndex].length > 0) {
+          const actualValues = computePlayerValues(playersAfter);
+          const actualHandValue = actualValues[playerIndex];
+          r -= Math.min(3, actualHandValue / 15);
+        }
+      } catch (e) {}
+    }
+
+    return r;
   }
 
-  return r;
-}
-  // Expose a safe API
+  // ⭐ NEW: Manual cleaning function
+  function manualClean(aggressive = true) {
+    const { cleaned, stats } = cleanQTable(Q, aggressive);
+    Q = cleaned;
+    localStorage.setItem(LS_KEY, JSON.stringify(cleaned));
+    return stats;
+  }
+
+  // ⭐ NEW: Get Q-table statistics
+  function getStats() {
+    const states = Object.keys(Q).length;
+    const actions = Object.values(Q).reduce((sum, a) => sum + Object.keys(a || {}).length, 0);
+    const avgActionsPerState = states > 0 ? (actions / states).toFixed(2) : 0;
+    
+    return {
+      states,
+      actions,
+      avgActionsPerState
+    };
+  }
+
+  // Expose API
   return {
     chooseMove,
     updateQ,
-	getQValue, // <-- ADD THIS LINE
+    getQValue,
     calculateReward,
-    save: () => { saveQ(); },
+    save: () => { saveQ(true); },
     load: () => { Q = JSON.parse(localStorage.getItem(LS_KEY) || "{}"); },
     exportQ: () => JSON.stringify(Q),
-    importQ: (json) => { Q = JSON.parse(json || "{}"); saveQ(); },
+    importQ: (json) => { Q = JSON.parse(json || "{}"); saveQ(true); },
+    clean: manualClean, // ⭐ NEW
+    getStats: getStats, // ⭐ NEW
     LS_KEY,
-async selfTrainAI(iterations = 200, showEvery = 200, progressCallback = null) {
-  // FORCE RESET if stuck
+async selfTrainAI(iterations = 2000, showEvery = 200, progressCallback = null) {
+  // Setup code
   if (window.trainingMode) {
     console.warn("⚠️ Training already in progress. Force resetting...");
     window.trainingMode = false;
@@ -2002,20 +2130,21 @@ async selfTrainAI(iterations = 200, showEvery = 200, progressCallback = null) {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   
-  // Mark training start time
   window.trainingMode = true;
   window.lastTrainingStartTime = Date.now();
   console.log(`🤖 selfTrainAI: starting ${iterations} games for ${numPlayersVar}-player mode`);
-  console.log(`📊 Current Q-table size: ${Object.keys(Q).length} states`);
+  
+  const initialStats = getStats();
+  console.log(`📊 Initial Q-table: ${initialStats.states} states, ${initialStats.actions} actions`);
 
   let consecutiveErrors = 0;
   const MAX_CONSECUTIVE_ERRORS = 100;
 
   try {
+    // ========== TRAINING LOOP ==========
     for (let g = 0; g < iterations; g++) {
       try {
         let gs = setupGame();
-
         if (typeof gs.gameOver === 'undefined') gs.gameOver = false;
 
         let safety = 200;
@@ -2035,7 +2164,6 @@ async selfTrainAI(iterations = 200, showEvery = 200, progressCallback = null) {
           const playerHand = gs.players[p];
           const validMoves = (typeof getValidMoves === "function") ? getValidMoves(playerHand, gs.board) : [];
 
-          // Use shallow copy instead of JSON for better performance
           const stateBefore = {
             players: gs.players.map(hand => hand.slice()),
             board: gs.board ? {
@@ -2060,7 +2188,6 @@ async selfTrainAI(iterations = 200, showEvery = 200, progressCallback = null) {
             if (typeof playTile === "function") {
               const played = playTile(gs, chosen.tile, chosen.end);
               if (!played) {
-                // If play failed, force end game
                 gs.gameOver = true;
                 break;
               }
@@ -2069,7 +2196,6 @@ async selfTrainAI(iterations = 200, showEvery = 200, progressCallback = null) {
             }
           }
 
-          // Use shallow copy for stateAfter too
           const stateAfter = {
             players: gs.players.map(hand => hand.slice()),
             board: gs.board ? {
@@ -2089,22 +2215,16 @@ async selfTrainAI(iterations = 200, showEvery = 200, progressCallback = null) {
           if (gs.gameOver) break;
         }
 
-        // Reset consecutive errors on success
         consecutiveErrors = 0;
-        
-        // Clear game state to free memory
         gs = null;
 
-        // Progress logging with callback
-        if (g % showEvery === 0 || g === iterations - 1) {
-          // Update timestamp
+        // Progress logging
+        if (g % 500 === 0 || g === iterations - 1) {
           window.lastTrainingStartTime = Date.now();
           
-          // Log progress
-          const qSize = Object.keys(Q).length;
-          console.log(`🎮 Training: ${g}/${iterations} games | Q-table: ${qSize} states`);
+          const stats = getStats();
+          console.log(`🎮 Training: ${g}/${iterations} games | Q-table: ${stats.states} states, ${stats.actions} actions (${stats.avgActionsPerState} avg/state)`);
           
-          // Update UI
           if (progressCallback && typeof progressCallback === 'function') {
             try {
               progressCallback(g);
@@ -2113,17 +2233,16 @@ async selfTrainAI(iterations = 200, showEvery = 200, progressCallback = null) {
             }
           }
           
-          // Yield to event loop every 200 games
           await new Promise(resolve => setTimeout(resolve, 0));
-          
-          // Save periodically (every 200 games)
-          if (g % 200 === 0 && g > 0) {
-            try { 
-              saveQ(); 
-              console.log(`💾 Checkpoint save at ${g} games`);
-            } catch (e) { 
-              console.warn("Save failed:", e);
-            }
+        }
+        
+        // Save checkpoint
+        if (g % 1000 === 0 && g > 0) {
+          try { 
+            saveQ(true); 
+            console.log(`💾 Checkpoint save at ${g} games`);
+          } catch (e) { 
+            console.warn("Save failed:", e);
           }
         }
 
@@ -2141,30 +2260,43 @@ async selfTrainAI(iterations = 200, showEvery = 200, progressCallback = null) {
         continue;
       }
     }
+    // ========== END OF TRAINING LOOP ==========
 
-    // Final progress update
+    // ⭐⭐⭐ CRITICAL: FINAL CLEAN MUST BE HERE (AFTER the for loop, BEFORE catch block)
+    console.log(`🧹 Training complete. Starting final aggressive clean...`);
+    
+    // Final progress callback
     if (progressCallback && typeof progressCallback === 'function') {
       try {
         progressCallback(iterations);
       } catch (e) {
-        // Ignore callback errors
+        console.warn("Progress callback failed:", e);
       }
     }
 
+    // Final aggressive clean
+    const beforeClean = Object.keys(Q).length;
+    console.log(`📊 Q-table before final clean: ${beforeClean} states`);
+    
+    const finalCleanStats = manualClean(true); // Use aggressive=true
+    
+    console.log(`✅ Final clean complete: ${finalCleanStats.originalStates}→${finalCleanStats.keptStates} states (${((1 - finalCleanStats.keptStates / finalCleanStats.originalStates) * 100).toFixed(1)}% reduction)`);
+    console.log(`   📊 Actions: ${finalCleanStats.originalActions}→${finalCleanStats.keptActions}`);
+    
     // Final save
     try { 
-      saveQ(); 
+      saveQ(true); 
       console.log(`💾 Final save completed`);
     } catch (e) { 
       console.error("Final save failed:", e);
     }
     
-    // SHOW TRAINING RESULTS
-    const finalQSize = Object.keys(Q).length;
-    console.log(`✅ Training complete! Learned ${finalQSize} unique game states`);
+    // Show final stats
+    const finalStats = getStats();
+    console.log(`✅ Training complete! Final Q-table: ${finalStats.states} states, ${finalStats.actions} actions`);
+    console.log(`📈 Learning efficiency: ${(finalStats.actions / iterations).toFixed(2)} meaningful actions per game`);
     
-    // Only show sample if Q has data
-    if (finalQSize > 0) {
+    if (finalStats.states > 0) {
       const samples = Object.entries(Q).slice(0, 3).map(([state, actions]) => ({
         state: state.substring(0, 50) + '...',
         actions: Object.keys(actions).length,
@@ -2175,7 +2307,7 @@ async selfTrainAI(iterations = 200, showEvery = 200, progressCallback = null) {
     
   } catch (error) {
     console.error("❌ Training failed:", error);
-    throw error; // Re-throw so trainAIForMode knows it failed
+    throw error;
   } finally {
     // ALWAYS reset training mode
     window.trainingMode = false;
@@ -2185,6 +2317,8 @@ async selfTrainAI(iterations = 200, showEvery = 200, progressCallback = null) {
 }
  };
 })(); // end aiBrain
+
+
 /* ===== End AI Brain ===== */
 function safeAlert(msg) {
   if (window.trainingMode) {
