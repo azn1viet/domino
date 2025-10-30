@@ -849,7 +849,7 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.2.1</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.2.2</div>
 
 <script>
   // PWA Install Script
@@ -4239,20 +4239,7 @@ function ensureTrainedFlags(aiLoaded) {
     console.warn("⚠️ Skipping trained flags — AI data not loaded or URL is null.");
     return;
   }
-  
-  if (AI_REMOTE_URL === null || AI_REMOTE_URL === undefined || AI_REMOTE_URL === "") {
-  localStorage.setItem("Domino_AI_Trained_2P", "true");
-  localStorage.setItem("Domino_AI_Trained_3P", "true");
-  localStorage.setItem("Domino_AI_Trained_4P", "true");
-
-  window.Domino_AI_Trained_2P = "true";
-  window.Domino_AI_Trained_3P = "true";
-  window.Domino_AI_Trained_4P = "true";
-
-  console.log("🏁 All training flags set to true (AI JSON loaded).");
-  }
 }
-
 
 // --- Merge helper ---
 function mergeBaseAndUserData(newBase, localData) {
@@ -4305,9 +4292,21 @@ async function loadPretrainedDominoAI() {
     localStorage.setItem(LOCAL_Q_KEY, JSON.stringify(merged));
     localStorage.setItem(LOCAL_VERSION_KEY, currentVersion);
 
+
     window.aiQTable = merged;
     ensureTrainedFlags(aiLoaded);
     console.log(`✅ AI loaded (${Object.keys(merged).length} records).`);
+		
+  localStorage.setItem("Domino_AI_Trained_2P", "true");
+  localStorage.setItem("Domino_AI_Trained_3P", "true");
+  localStorage.setItem("Domino_AI_Trained_4P", "true");
+
+  window.Domino_AI_Trained_2P = "true";
+  window.Domino_AI_Trained_3P = "true";
+  window.Domino_AI_Trained_4P = "true";
+
+  console.log("🏁 All training flags set to true (AI JSON loaded).");
+  
     return merged;
 
   } catch (err) {
