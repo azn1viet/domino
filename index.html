@@ -849,7 +849,7 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.2.2</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.2.3</div>
 
 <script>
   // PWA Install Script
@@ -3833,7 +3833,7 @@ function renderGame(gameState) {
         leftPlaceholder.ondragover = (e) => { e.preventDefault(); if (draggedTile && canPlayOnEnd(draggedTile, board.leftEnd.value)) leftPlaceholder.style.border = '2px dashed yellow'; };
         leftPlaceholder.ondragleave = () => { leftPlaceholder.style.border = '2px dashed #6a6a6a'; };
         leftPlaceholder.ondrop = (e) => { e.preventDefault(); leftPlaceholder.style.border = '2px dashed #6a6a6a'; try { const tileData = JSON.parse(e.dataTransfer.getData('text/plain')); if (canPlayOnEnd(tileData, board.leftEnd.value)) playTile(gameState, tileData, 'left'); } catch (err) {} };
-        leftPlaceholder.onclick = () => { if (gameState.selectedIndex !== -1) { const selectedTile = players[0][gameState.selectedIndex]; if (canPlayOnEnd(selectedTile, board.leftEnd.value)) playTile(gameState, selectedTile, 'left'); } };
+        leftPlaceholder.onclick = (e) => { e.stopPropagation(); if (gameState.selectedIndex !== -1) { const selectedTile = players[0][gameState.selectedIndex]; if (canPlayOnEnd(selectedTile, board.leftEnd.value)) playTile(gameState, selectedTile, 'left'); } };
       }
 
       if (shouldShowRight) {
@@ -3849,17 +3849,26 @@ function renderGame(gameState) {
         rightPlaceholder.ondragover = (e) => { e.preventDefault(); if (draggedTile && canPlayOnEnd(draggedTile, board.rightEnd.value)) rightPlaceholder.style.border = '2px dashed yellow'; };
         rightPlaceholder.ondragleave = () => { rightPlaceholder.style.border = '2px dashed #6a6a6a'; };
         rightPlaceholder.ondrop = (e) => { e.preventDefault(); rightPlaceholder.style.border = '2px dashed #6a6a6a'; try { const tileData = JSON.parse(e.dataTransfer.getData('text/plain')); if (canPlayOnEnd(tileData, board.rightEnd.value)) playTile(gameState, tileData, 'right'); } catch (err) {} };
-        rightPlaceholder.onclick = () => { if (gameState.selectedIndex !== -1) { const selectedTile = players[0][gameState.selectedIndex]; if (canPlayOnEnd(selectedTile, board.rightEnd.value)) playTile(gameState, selectedTile, 'right'); } };
+        rightPlaceholder.onclick = (e) => { e.stopPropagation(); if (gameState.selectedIndex !== -1) { const selectedTile = players[0][gameState.selectedIndex]; if (canPlayOnEnd(selectedTile, board.rightEnd.value)) playTile(gameState, selectedTile, 'right'); } };
       }
     }
 
-    if (!gameOver && currentActivePlayerTurn === 0) {
-      if (board.tiles.length === 0) {
-        tableDiv.ondragover = (e) => e.preventDefault();
-        tableDiv.ondrop = (e) => { e.preventDefault(); try { const tileData = JSON.parse(e.dataTransfer.getData('text/plain')); playTile(gameState, tileData, 'right'); } catch (err) {} };
-        tableDiv.onclick = () => { if (gameState.selectedIndex !== -1) { const selectedTile = players[0][gameState.selectedIndex]; playTile(gameState, selectedTile, 'right'); } };
-      }
-    }
+if (!gameOver && currentActivePlayerTurn === 0) {
+  if (board.tiles.length === 0) {
+    tableDiv.ondragover = (e) => e.preventDefault();
+    tableDiv.ondrop = (e) => { e.preventDefault(); try { const tileData = JSON.parse(e.dataTransfer.getData('text/plain')); playTile(gameState, tileData, 'right'); } catch (err) {} };
+    tableDiv.onclick = (e) => { 
+      // Only play if clicking directly on table (not a placeholder)
+      if (e.target === tableDiv && gameState.selectedIndex !== -1) { 
+        const selectedTile = players[0][gameState.selectedIndex]; 
+        playTile(gameState, selectedTile, 'right'); 
+      } 
+    };
+  } else {
+    // Remove general table click handler when board has tiles
+    tableDiv.onclick = null;
+  }
+}
 
     document.querySelectorAll('.player-hand').forEach((hand, index) => {
       if (!gameState.playerOrder.includes(index)) {
