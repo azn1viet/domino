@@ -781,7 +781,7 @@
     </div>
     <button id="start-game-btn" disabled
       style="background: gray; color: black; padding: 12px 30px; font-size: 16px; opacity: 0.6;">
-      Loading pre-trained data for AI...
+      Loading AI...
     </button>
   </div>
 </div>
@@ -849,7 +849,7 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.2.4</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.2.3</div>
 
 <script>
   // PWA Install Script
@@ -2382,6 +2382,7 @@ function safeAlert(msg) {
   alert(msg);
 }
 	///
+	
 function playAI(gameState) {
 // ⭐ FIX: Add a safety guard to never run AI logic for the human player (0)
   if (currentActivePlayerTurn === 0) {
@@ -2389,6 +2390,8 @@ function playAI(gameState) {
     return; 
   }
   ///
+    console.log(`\n🤖 === AI TURN: Player ${getPlayerNumber(currentActivePlayerTurn)} ===`);
+
   const { players, board, roundHistory, isThisFirstGame, boneyard, playerOrder } = gameState; 
 
   // --- SAFETY CHECK FOR TURN INDEX ---
@@ -2402,6 +2405,9 @@ function playAI(gameState) {
     console.error('⚠️ playAI: playerHand is invalid', playerHand);
     return;
   }
+  
+  console.log(`📋 Hand (${playerHand.length} tiles):`, playerHand.map(t => `[${t.top}-${t.bottom}]`).join(' '));
+  console.log(`🎯 Board ends: Left=${board.leftEnd?.value ?? 'N'}, Right=${board.rightEnd?.value ?? 'N'}`);
 
   const has_boneyard = playerOrder.length < 4;
   const bet = gameState.bet || 1; // fall-back if not provided
@@ -2527,6 +2533,9 @@ function addTile(t) {
   const minOpponentValue = opponentValues.length ? Math.min(...opponentValues) : Infinity;
   const maxOpponentValue = opponentValues.length ? Math.max(...opponentValues) : -Infinity;
 
+console.log(`💎 Hand values: My=${myCurrentValue}, OpponentMin=${minOpponentValue}, OpponentMax=${maxOpponentValue}`);
+console.log(`🃏 Tile counts:`, playerOrder.map(p => `P${getPlayerNumber(p)}=${players[p].length}`).join(', '));
+
   // ===== OPPONENT THREAT ASSESSMENT =====
   const opponentThreats = playerOrder
     .filter(p => p !== currentActivePlayerTurn)
@@ -2588,6 +2597,8 @@ function addTile(t) {
     // ===== PRIORITY 0: WINNING MOVE =====
     if (simPlayers[currentActivePlayerTurn].length === 0) {
       // Strong preference to go out immediately
+	  console.log(`  ✅ WINNING MOVE! Score: 1,000,000`);
+
       score = 1_000_000;
       bestMove = { tile, end, score };
       // still push into moveScores and break evaluation loop
@@ -2686,16 +2697,27 @@ if (tileValue === 0) { // It's [0-0]
     tileValue = 13;
   }
 }
+
+///	  
+console.log(`⚠️ Threats: ${winningOpponents.length > 0 ? winningOpponents.map(o => `P${getPlayerNumber(o.player)}(${o.handValue}pts)`).join(', ') : 'None'}`);
+console.log(`🚨 Run-out threats (1 tile left): ${runOutThreats.length > 0 ? runOutThreats.map(p => `P${getPlayerNumber(p)}`).join(', ') : 'None'}`);
+///
+
       if (isInDanger) {
         score += tileValue * 150;
         if (tileValue >= 10) score += 2500;
         if (tileValue >= 9) score += 1500;
         if (tileValue >= 8) score += 800;
+		
+		console.log(`🔴 DANGER MODE: ${tileCountDisadvantage} tiles behind!`);
+		
       } else if (isAtRisk) {
         score += tileValue * 80;
         if (tileValue >= 9) score += 1500;
         if (tileValue >= 7) score += 800;
         if (tileValue >= 5) score += 400;
+		
+		console.log(`🟡 AT RISK: ${tileCountDisadvantage} tile behind`);
       }
 
       const remAfter = remainingIfPlayed;
@@ -3036,11 +3058,17 @@ if (myTileCount <= 3) {
   score += (10 - setVals.size) * 100;
 }
 ///
+  // Add before final score
+  console.log(`  📊 Base heuristic score: ${score.toFixed(0)}`);
+  
 // === NEW: Get AI Brain's opinion ===
     let qValue = 0;
     if (typeof aiBrain === 'object' && typeof aiBrain.getQValue === 'function') {
       // Use the new function to get the brain's learned score
       qValue = aiBrain.getQValue(stateBefore, currentActivePlayerTurn, move);
+	   
+	   console.log(`  🧠 AI Brain Q-value: ${qValue.toFixed(2)}`);
+
     }
 
     // === NEW: Combine scores ===
@@ -3052,6 +3080,9 @@ if (myTileCount <= 3) {
 
     // The final score is a weighted sum of both "brains"
     const finalScore = (score * W_h) + (qValue * W_q);
+	
+console.log(`  🎯 Final combined score: ${finalScore.toFixed(0)} (Heuristic: ${(score * W_h).toFixed(0)} + Brain: ${(qValue * W_q).toFixed(0)})`);
+
     
     // Store the *combined* score
     moveScores.push({ move, score: finalScore }); 
@@ -3065,6 +3096,11 @@ if (myTileCount <= 3) {
 // === SELECTION: Choose the best *combined* score ===
   // The 'bestMove' variable now holds the move with the highest combined score
   // from the Heuristic Engine AND the AI Brain.
+  
+console.log(`\n🏆 BEST MOVE SELECTED:`);
+console.log(`  Tile: [${bestMove.tile.top}-${bestMove.tile.bottom}]`);
+console.log(`  End: ${bestMove.end}`);
+console.log(`  Score: ${bestMove.score.toFixed(0)}`);
 
   let chosenMove = { tile: bestMove.tile, end: bestMove.end };
 
@@ -3074,7 +3110,12 @@ if (myTileCount <= 3) {
   const epsilon = 0.1; // 10% chance to explore a random move
   if (Math.random() < epsilon && validMoves.length > 0) {
      chosenMove = validMoves[Math.floor(Math.random() * validMoves.length)];
+	 
+	console.log(`🎲 EXPLORATION: Randomly chose [${chosenMove.tile.top}-${chosenMove.tile.bottom}] on ${chosenMove.end} instead (ε=${epsilon})`);
+
   }
+  
+console.log(`\n▶️ PLAYING: [${chosenMove.tile.top}-${chosenMove.tile.bottom}] on ${chosenMove.end} end\n`);
 
 
   // --- Play the chosen move normally ---
@@ -3506,6 +3547,12 @@ function hadAlternativeThatAvoidsBlock(playerIndex, boardBefore, handBefore, pla
 
   // Check each alternative move
   for (const move of validMoves) {
+  
+   let score = 0;
+  const { tile, end } = move;
+  
+  console.log(`\n🔍 Evaluating: [${tile.top}-${tile.bottom}] on ${end} end`);
+  
     // Simulate playing this tile
     const simBoard = simulatePlay(boardBefore, move.tile, move.end);
     const simPlayers = JSON.parse(JSON.stringify(playersState));
@@ -3727,12 +3774,11 @@ function showNewGameButton() {
   // Skip UI updates during training
   if (window.trainingMode) return;
   
-    ///
+  ///
   // === ADD THIS LINE TO SAVE ALL LEARNING ===
   if (aiBrain) aiBrain.save();
   // ==========================================
   ///
-  
   
   const newGameBtn = document.getElementById('new-game');
   newGameBtn.style.display = 'block';
