@@ -849,7 +849,7 @@
     <option value="500000">500000</option>
     <option value="1000000">1000000</option>
   </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.1.0</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.2.0</div>
 
 <script>
   // PWA Install Script
@@ -1743,15 +1743,15 @@ async function trainAIForMode(playerCount) {
     // Show loading message
     const loadingMsg = document.createElement('div');
     loadingMsg.id = 'ai-training-msg';
-    loadingMsg.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.9);color:#0f0;padding:20px 40px;border:2px solid #0f0;border-radius:10px;z-index:10001;font-size:18px;text-align:center;';
-    loadingMsg.innerHTML = `🤖 Training AI for ${playerCount}-player mode...<br><span style="font-size:14px;color:#add8e6;">Progress: 0/2000 games (0%)</span>`;
+    loadingMsg.style.cssText = 'position:fixed; width:90%;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.9);color:#0f0;padding:30px 15px;border:2px solid #0f0;border-radius:10px;z-index:10001;font-size:18px;text-align:center;';
+    loadingMsg.innerHTML = `🤖 Training AI for ${playerCount}-player mode...<br><br><br><span style="font-size:14px;color:#add8e6;">Progress: 0/2000 games (0%)</span>`;
     document.body.appendChild(loadingMsg);
     
     // Progress callback to update UI
     const updateProgress = (gamesCompleted) => {
       if (loadingMsg && loadingMsg.parentNode) {
         const percent = Math.floor((gamesCompleted / 2000) * 100);
-        loadingMsg.innerHTML = `🤖 Training AI for ${playerCount}-player mode...<br><span style="font-size:14px;color:#add8e6;">Progress: ${gamesCompleted}/2000 games (${percent}%)</span>`;
+        loadingMsg.innerHTML = `🤖 Training AI for ${playerCount}-player mode...<br><br><br><span style="font-size:14px;color:#add8e6;">Progress: ${gamesCompleted}/2000 games (${percent}%)</span>`;
       }
     };
     
@@ -2058,39 +2058,90 @@ function updateQ(gameState, playerIndex, actionMove, reward, nextGameState) {
 }
 ///
   // Reward function with [0-0] = 13 rule
-  function calculateReward(gameStateBefore, playerIndex, actionMove, gameStateAfter) {
-    let r = 0.5;
+// Reward function with 0-0=13 rule and adaptive win/loss/defensive logic
+function calculateReward(gameStateBefore, playerIndex, actionMove, gameStateAfter) {
+  let r = 0.5; // base reward
 
-    if (!actionMove || actionMove === "PASS") r = -0.1;
+  // Penalize PASS
+  if (!actionMove || actionMove === "PASS") r -= 0.1;
 
-    try {
-      const t = actionMove && actionMove.tile ? actionMove.tile : null;
-      if (t && t.top !== undefined && t.bottom !== undefined && t.top === t.bottom) {
-        r += 0.4;
-      }
-    } catch (e) { /* ignore */ }
+  // Reward double tiles
+  try {
+    const t = actionMove && actionMove.tile ? actionMove.tile : null;
+    if (t && t.top === t.bottom) r += 0.4;
+  } catch (e) {}
 
-    try {
-      const playersAfter = gameStateAfter.players || [];
-      if (Array.isArray(playersAfter[playerIndex]) && playersAfter[playerIndex].length === 0) {
-        r += 8;
-      }
-    } catch (e) {}
+  // --- Check players and hands ---
+  const playersAfter = gameStateAfter?.players || [];
+  const me = playersAfter[playerIndex];
+  if (!me) return r;
 
-    if (gameStateAfter && gameStateAfter.gameOver) {
-      try {
-        const playersAfter = gameStateAfter.players || [];
-        if (Array.isArray(playersAfter[playerIndex]) && playersAfter[playerIndex].length > 0) {
-          const actualValues = computePlayerValues(playersAfter);
-          const actualHandValue = actualValues[playerIndex];
-          r -= Math.min(3, actualHandValue / 15);
-        }
-      } catch (e) {}
-    }
+  const myHand = me.hand || me; // support both array or object form
+  const myTiles = myHand.length || 0;
+  const myPipSum = myHand.reduce?.((a, t) => a + (t.top + t.bottom), 0) || 0;
 
-    return r;
+  // Opponent stats
+  const oppData = playersAfter
+    .map((p, i) => (i === playerIndex ? null : p))
+    .filter(Boolean)
+    .map(p => ({
+      pips: p.hand?.reduce?.((a, t) => a + (t.top + t.bottom), 0) || 0,
+      tiles: p.hand?.length || 0
+    }));
+
+  const oppAvgPip = oppData.length ? oppData.reduce((a, o) => a + o.pips, 0) / oppData.length : 0;
+  const oppMinPip = oppData.length ? Math.min(...oppData.map(o => o.pips)) : 0;
+  const oppTotalTiles = oppData.reduce((a, o) => a + o.tiles, 0);
+
+  const winnerIndex = gameStateAfter.winnerIndex;
+  const gameBlocked = !!gameStateAfter.blocked;
+  const canPlayMore = !!gameStateAfter.availableMoves?.length;
+
+  // --- Win / Lose scaling ---
+  if (winnerIndex === playerIndex) {
+    // Won the round
+    const diff = oppAvgPip - myPipSum;
+    r += 8 + diff * 0.05; // base + margin bonus
+  } else if (gameStateAfter.gameOver) {
+    // Game ended (loss or block)
+    const relativePerformance = 1 - (myPipSum / (oppAvgPip + 1)); // 0..1
+    r += 2 + relativePerformance * 2; // reward small if loss is mild
   }
 
+  // --- Defensive Block Awareness ---
+  if (gameBlocked && winnerIndex === null) {
+    const pipGap = myPipSum - oppMinPip;
+    const heavyHand = myTiles > oppTotalTiles / oppData.length + 2;
+
+    if (!canPlayMore) {
+      // Forced block (no one can move)
+      const defensiveValue = Math.max(0, 1 - (myPipSum / (oppAvgPip + 1)));
+      r += defensiveValue * 2;
+    } else if (heavyHand) {
+      // Intentional block with heavy hand: may reduce total loss
+      const lossMitigation = Math.max(0, 1 - (pipGap / 40));
+      r += 1 + lossMitigation * 1.5;
+    } else {
+      // Early block with light hand = bad choice
+      r += 0.1;
+    }
+  }
+
+  // --- Endgame penalties for leftover pips (kept from your code) ---
+  if (gameStateAfter.gameOver && myTiles > 0) {
+    try {
+      const actualValues = computePlayerValues(playersAfter);
+      const actualHandValue = actualValues[playerIndex];
+      r -= Math.min(3, actualHandValue / 15);
+    } catch (e) {}
+  }
+
+  // --- Normalize reward ---
+  if (r < 0) r = 0;
+  if (r > 15) r = 15;
+  return r;
+}
+///
   // ⭐ NEW: Manual cleaning function
   function manualClean(aggressive = true) {
     const { cleaned, stats } = cleanQTable(Q, aggressive);
@@ -4169,24 +4220,39 @@ startGameBtn.addEventListener('click', async () => {
   startNewGame();
 });
  </script>
- <!-- === AI Loader Script === -->
+<!-- === AI Loader Script (Safe + Fixed Version) === -->
 <script>
-const AI_REMOTE_URL      = "https://azn1viet.github.io/domino/4K2P3P4P_v1.json";
 const LOCAL_Q_KEY        = "Domino_AI_Q";
 const LOCAL_BASE_KEY     = "Domino_AI_Base";
 const LOCAL_VERSION_KEY  = "Domino_AI_VERSION";
 
-// --- Always mark all modes as trained ---
-function ensureTrainedFlags() {
-  window.localStorage.setItem("Domino_AI_Trained_2P", "true");
-  window.localStorage.setItem("Domino_AI_Trained_3P", "true");
-  window.localStorage.setItem("Domino_AI_Trained_4P", "true");
+// --- Optional remote source (safe check) ---
+let AI_REMOTE_URL = "https://azn1viet.github.io/domino/4K2P3P4P_v2.json";
+if (typeof AI_REMOTE_URL === "undefined" || !AI_REMOTE_URL) {
+  console.warn("⚠️ No AI_REMOTE_URL found — skipping AI load.");
+  AI_REMOTE_URL = null;
+}
+
+// --- Mark all modes as trained ONLY if AI JSON is successfully downloaded ---
+function ensureTrainedFlags(aiLoaded) {
+  if (!aiLoaded || AI_REMOTE_URL === null || AI_REMOTE_URL === undefined || AI_REMOTE_URL === "") {
+    console.warn("⚠️ Skipping trained flags — AI data not loaded or URL is null.");
+    return;
+  }
+  
+  if (AI_REMOTE_URL === null || AI_REMOTE_URL === undefined || AI_REMOTE_URL === "") {
+  localStorage.setItem("Domino_AI_Trained_2P", "true");
+  localStorage.setItem("Domino_AI_Trained_3P", "true");
+  localStorage.setItem("Domino_AI_Trained_4P", "true");
 
   window.Domino_AI_Trained_2P = "true";
   window.Domino_AI_Trained_3P = "true";
   window.Domino_AI_Trained_4P = "true";
-  console.log("🏁 All training flags set to true.");
+
+  console.log("🏁 All training flags set to true (AI JSON loaded).");
+  }
 }
+
 
 // --- Merge helper ---
 function mergeBaseAndUserData(newBase, localData) {
@@ -4199,23 +4265,34 @@ function mergeBaseAndUserData(newBase, localData) {
 
 // --- Loader core ---
 async function loadPretrainedDominoAI() {
-  ensureTrainedFlags();
+  let aiLoaded = false;
+  const localData = JSON.parse(localStorage.getItem(LOCAL_Q_KEY) || "{}");
+
+  if (!AI_REMOTE_URL) {
+    console.warn("⚠️ AI_REMOTE_URL is missing. Skipping AI load.");
+    window.aiQTable = {};
+    ensureTrainedFlags(false);
+    return {};
+  }
 
   const currentVersion = AI_REMOTE_URL.split("/").pop();
   const cachedVersion  = localStorage.getItem(LOCAL_VERSION_KEY);
-  const localData      = JSON.parse(localStorage.getItem(LOCAL_Q_KEY) || "{}");
 
   try {
     if (cachedVersion === currentVersion && Object.keys(localData).length) {
       console.log(`✅ Domino AI already loaded (${currentVersion}).`);
+      aiLoaded = true;
       window.aiQTable = localData;
+      ensureTrainedFlags(aiLoaded);
       return localData;
     }
 
     console.log(`⬇️ Fetching Domino AI from ${currentVersion}...`);
     const res = await fetch(AI_REMOTE_URL, { cache: "no-cache" });
     if (!res.ok) throw new Error(`Fetch failed (${res.status})`);
+
     const newBase = await res.json();
+    aiLoaded = true;
 
     const oldBase = JSON.parse(localStorage.getItem(LOCAL_BASE_KEY) || "{}");
     const userLearned = {};
@@ -4223,28 +4300,32 @@ async function loadPretrainedDominoAI() {
       if (!oldBase.hasOwnProperty(key)) userLearned[key] = localData[key];
     }
 
-    const merged = mergeBaseAndUserData(newBase, userLearned);
+    const merged = { ...userLearned, ...newBase };
     localStorage.setItem(LOCAL_BASE_KEY, JSON.stringify(newBase));
     localStorage.setItem(LOCAL_Q_KEY, JSON.stringify(merged));
     localStorage.setItem(LOCAL_VERSION_KEY, currentVersion);
 
     window.aiQTable = merged;
+    ensureTrainedFlags(aiLoaded);
     console.log(`✅ AI loaded (${Object.keys(merged).length} records).`);
     return merged;
 
   } catch (err) {
-    console.error("❌ AI load error:", err);
+    console.warn("⚠️ AI load skipped:", err.message);
     const cached = localStorage.getItem(LOCAL_Q_KEY);
     if (cached) {
-      console.warn("⚠️ Using cached AI data.");
+      console.log("ℹ️ Using new local train AI data.");
       window.aiQTable = JSON.parse(cached);
-      return window.aiQTable;
+      aiLoaded = true;
+    } else {
+      window.aiQTable = {};
     }
-    window.aiQTable = {};
-    return {};
+    ensureTrainedFlags(aiLoaded);
+    return window.aiQTable;
   }
 }
 
+///
 function saveDominoAILearning(updatedQ) {
   localStorage.setItem(LOCAL_Q_KEY, JSON.stringify(updatedQ));
   console.log("🧠 Domino AI updated locally.");
@@ -4256,16 +4337,28 @@ document.addEventListener("DOMContentLoaded", async () => {
   const playerOptions = document.querySelectorAll(".player-option");
   let selectedPlayers = 2;
 
-  startBtn.disabled = true;
-  startBtn.textContent = "Loading AI trained data...";
+  // Show loading state
+  if (startBtn) {
+    startBtn.disabled = true;
+    startBtn.textContent = "Loading AI trained data...";
+    startBtn.style.opacity = "0.7";
+  }
   playerOptions.forEach(btn => btn.disabled = true);
 
-  const result = await loadPretrainedDominoAI();
+  try {
+    await loadPretrainedDominoAI();
+  } catch (e) {
+    console.warn("⚠️ Skipping AI initialization due to error:", e);
+    window.aiQTable = {};
+  }
 
-  startBtn.disabled = false;
-  startBtn.textContent = "Start Game";
-  startBtn.style.background = "#0f0";
-  startBtn.style.opacity = "1";
+  // ✅ Always restore button state (even if error or missing AI)
+  if (startBtn) {
+    startBtn.disabled = false;
+    startBtn.textContent = "Start Game";
+    startBtn.style.background = "#0f0";
+    startBtn.style.opacity = "1";
+  }
   playerOptions.forEach(btn => btn.disabled = false);
 
   playerOptions.forEach(option => {
@@ -4275,12 +4368,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       selectedPlayers = parseInt(option.dataset.players);
     });
   });
-
- /* startBtn.addEventListener("click", () => {
-    console.log(`🎮 Starting game with ${selectedPlayers} players`);
-    if (typeof setupGame === "function") setupGame(selectedPlayers);
-    else console.warn("setupGame() not defined yet.");
-  });*/
 });
 </script>
 
