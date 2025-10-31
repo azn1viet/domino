@@ -175,7 +175,7 @@
     }
 
     #game-container {
-      position: absolute;
+      position:  absolute;
 	  top: 0;
       left: 0;
     /*top: 50%;
@@ -188,17 +188,29 @@
       width: 100%;
       height: 100%;
       overflow: visible;
-      pointer-events: none;
+      pointer-events: none; 
     }
 	
 #table {
   position: absolute;
   left: 50%;
-  top: calc(50% - 50px);
+  top: calc(50% - 35px);
   transform: translate(-50%, -50%);
   
-  width: 80%;
-  height: calc(100% - 260px);
+  width: calc(100% - 100px);
+  height: calc(100% - 235px);
+  
+  display: block;
+  pointer-events: all;
+}
+#handlayout {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  
+  width: 100%;
+  height: 100%;
   
   display: block;
   pointer-events: all;
@@ -767,7 +779,554 @@
       box-shadow: 0 0 10px #0f08;
     }
   </style>
-</head>
+  <style>
+  /* === Network Menu Button === */
+#network-btn {
+  position: fixed;
+  top: 2px;
+  right: -10px;
+  z-index: 200; /* Below options menu, above bet */
+  background: #000;
+  color: #0f0;
+  cursor: pointer;
+  padding: 6px 8px; /* Tighter fit */
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.4);
+  transition: all 0.2s ease;
+  pointer-events: auto;
+  line-height: 0; /* For SVG alignment */
+}
+
+#network-btn:hover {
+  background: #0c0;
+  color: black;
+  transform: scale(1.05);
+}
+
+#network-btn:active {
+  transform: scale(0.95);
+}
+
+#network-btn svg {
+  stroke: currentColor;
+}
+
+
+#network-drawer.open {
+  right: 0; /* Slide in */
+}
+
+/* --- Drawer Header --- */
+.drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 15px;
+  background: #333;
+  border-bottom: 1px solid #0f0;
+  flex-shrink: 0; /* Don't shrink */
+}
+
+.drawer-header span {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0f0;
+}
+
+.close-drawer-btn {
+  background: transparent;
+  color: #0f0;
+  padding: 0;
+  margin: 0;
+  box-shadow: none;
+  font-size: 24px;
+  line-height: 0;
+}
+.close-drawer-btn:hover {
+  color: #fff;
+  background: transparent;
+  transform: scale(1.1);
+}
+
+/* Message Types */
+#message-list div {
+  margin-bottom: 6px;
+}
+#message-list span {
+  font-weight: 600;
+  margin-right: 5px;
+}
+.msg-server span { color: #0f0; } /* Green */
+.msg-user span { color: #0af; }   /* Blue */
+.msg-game span { color: #fa0; }   /* Orange */
+
+
+.tab-btn:last-child {
+  border-right: none;
+}
+
+
+.tab-btn:hover:not(.active) {
+background: none;
+  transform: none;
+}
+
+.tab-content.active {
+  display: flex; /* Show active tab */
+}
+
+.tab-header {
+  padding: 10px 15px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f0;
+  background: #333;
+  border-bottom: 1px solid #444;
+  flex-shrink: 0;
+}
+
+.tab-scroll {
+  flex-grow: 1;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+/* --- Rooms Tab --- */
+.room-item {
+  display: flex;
+  align-items: center;
+  background: #3a3a3a;
+  padding: 10px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  border-left: 4px solid #555;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.room-item:hover {
+  background: #444;
+}
+.room-item.active {
+  background: #4a4a4a;
+  border-left: 4px solid #0f0;
+}
+.room-icon {
+  font-size: 20px;
+  margin-right: 12px;
+}
+.room-info {
+  flex-grow: 1;
+  text-align: right;
+}
+.room-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+}
+.room-stats {
+  font-size: 12px;
+  color: #ccc;
+}
+
+/* --- Tables Tab --- */
+.table-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #3a3a3a;
+  padding: 10px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+.table-item.full {
+  opacity: 0.6;
+}
+.table-info {
+  flex-grow: 1;
+  margin-right: 10px;
+}
+.table-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 4px;
+}
+.table-details {
+  font-size: 12px;
+  color: #ccc;
+}
+.table-details span {
+  margin-right: 10px;
+}
+.join-btn {
+  padding: 6px 12px;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.join-btn[disabled] {
+  background: #555;
+  color: #999;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* --- New Table Tab --- */
+
+.create-table-form input[type="text"],
+.create-table-form input[type="password"],
+.create-table-form select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background: #222;
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 14px;
+  color: #fff;
+  font-family: 'Inter', sans-serif;
+  width: 100%;
+}
+.create-table-form input:focus,
+.create-table-form select:focus {
+  border-color: #0f0;
+  outline: none;
+}
+.create-table-form select {
+  background-image: linear-gradient(45deg, transparent 50%, #0f0 50%),
+                    linear-gradient(135deg, #0f0 50%, transparent 50%);
+  background-position: calc(100% - 15px) calc(50% - 2px),
+                       calc(100% - 10px) calc(50% - 2px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 30px;
+}
+
+.create-table-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* New: Defines a row with two elements */
+.form-row {
+  display: flex;
+  gap: 12px; /* Space between the two elements */
+}
+
+/* New: Make elements within a form-row take equal space */
+.form-row label {
+  flex: 1 1 0%; /* Allows the label to grow, shrink, and starts with 0 basis */
+}
+
+/* Ensures full-width elements (like table name/password) are not affected */
+.create-table-form label.full-width {
+  flex: none; /* Override flex property */
+}
+
+.create-table-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 13px;
+  color: #ccc;
+  font-weight: 500;
+}
+.create-btn {
+  margin-top: 10px;
+  padding: 10px;
+  font-size: 15px;
+}
+/* === Drawer Base === */
+/*#network-drawer {
+  position: fixed;
+  right: 0;
+  top: 0;
+  width: 320px;
+  height: 100%;
+  background: #111;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.4s ease;
+  transform: translateX(100%);
+  z-index: 1000;
+}
+#network-drawer.open {
+  transform: translateX(0);
+}
+*/
+/* === Network Drawer === */
+#network-drawer {
+  position: fixed;
+  top: 0;
+  right: -320px; /* Start off-screen */
+  width: 320px;
+  max-width: 90vw; /* Max width on small screens */
+  height: 100vh;
+  background: #2a2a2a;
+  border-left: 2px solid #0f0;
+  box-shadow: -5px 0 15px rgba(0, 255, 0, 0.3);
+  z-index: 5000;
+  display: flex;
+  flex-direction: column;
+  transition: right 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+  color: #add8e6;
+  pointer-events: auto;
+}
+
+#network-drawer.open {
+  right: 0; /* Slide in */
+}
+
+/* === Message Center (now fills background) === */
+#message-center {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+#message-list {
+  height: calc(100vh - 150px);
+  overflow-y: auto;
+  padding: 10px;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 1; /* behind the sliding tabs */
+  font-size: 12px;
+  z-index: 1;
+  line-height: 1.5;
+}
+
+/* === Tabs Overlay Layer === */
+#network-tabs {
+  position: absolute;
+  inset: 0; /* full overlay area */
+  pointer-events: none; /* allow clicks only when tab active */
+  z-index: 5;
+}
+
+/* === Tab Content Panels === */
+.tab-content {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100px; /* leave space for tab buttons */
+  max-height: calc(100% - 50px);
+  background: rgba(20, 20, 20, 0.97);
+  border-top: 1px solid #333;
+  transform: translateY(100%);
+  transition: transform 0.35s ease;
+  display: flex;
+  flex-direction: column;
+  pointer-events: auto;
+  z-index: 10;
+}
+
+/* When active → slide up */
+.tab-content.active {
+display: flex;
+  transform: translateY(0);
+}
+
+/* === Tab Buttons (always visible) === */
+.tab-buttons {
+  position: absolute;
+  width:100%;
+  height:50px;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  background: #222;
+  border-top: 1px solid #333;
+  justify-content: space-around;
+  padding: 5px;
+  z-index: 20; /* stay on top of everything */
+  pointer-events: auto;
+}
+
+.tab-btn {
+  flex: 1;
+  background: none;
+  color: #aaa;
+  border: none;
+  font-size: 13px;
+  padding: 8px 0;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.tab-btn.active {
+background: none;
+color: #0f0;
+}
+.tab-btn::before {
+  content: none !important;
+}
+.tab-btn::after {
+  content: "▲";
+  font-size: 12px;
+  margin-left: 5px;
+  transition: opacity 0.2s ease;
+  display: inline-block;
+}
+.tab-btn.active::before {
+  content: ""; /* Remove arrow when active */
+}
+.tab-btn.active::after {
+  content: " ▼"; /* down arrow */
+  font-size: 12px;
+}
+/* === Tab Inner Scroll Area === */
+.tab-scroll {
+  overflow-y: auto;
+  flex: 1;
+  padding: 8px 10px;
+}
+
+
+
+/* === Chat Input Bar === */
+
+
+.chat-input-bar {
+  position: absolute;
+  bottom: 50px; /* above the tab buttons */
+  left: 0;
+  right: 0;
+  background: #1a1a1a;
+  border-top: 1px solid #333;
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  gap: 8px;
+  z-index: 15;
+}
+
+.chat-input-bar input {
+  flex: 1;
+  background: #222;
+  color: #eee;
+  border: 1px solid #333;
+  border-radius: 20px;
+  padding: 8px 14px;
+  font-size: 14px;
+  outline: none;
+  transition: border 0.2s, background 0.2s;
+}
+
+.chat-input-bar input:focus {
+  border-color: #0f0;
+  background: #181818;
+}
+
+/* === Circular Send Button === */
+.composer-submit-btn {
+  height: 36px;
+  width: 36px;
+  border-radius: 50%;
+  border: none;
+  background: #333;
+  color: #666;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.25s, color 0.25s, transform 0.15s;
+}
+.composer-submit-btn .icon {
+  width: 20px;
+  height: 20px;
+}
+.composer-submit-btn:hover:not(:disabled) {
+  background: #0f0;
+  color: #000;
+  transform: scale(1.1);
+}
+.composer-submit-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* === When active (input has text) === */
+.composer-submit-btn.active {
+  background: #0f0;
+  color: #000;
+}
+
+/* === Responsive Drawer Logic (Screen >= 695px) === */
+@media (min-width: 695px) {
+  
+  /* 1. Implement the "Squeeze" Mechanism on the Main Game Container */
+  #handlayout {
+ 
+  position: absolute;
+  left: calc(25% + 3vw);
+  top: 50%;
+  transform: translate(-50%, -50%);
+  
+  width: calc(100% - 320px);
+  height: 100%;
+  
+  display: block;
+  pointer-events: all;
+  }
+
+#table {
+    position: absolute;
+    left: calc(25% + 3vw);
+    top: calc(50% - 35px);
+    transform: translate(-50%, -50%);
+    width: calc(100% - 420px);
+    height: calc(100% - 235px);
+    display: block;
+    pointer-events: all;
+ }
+  #network-drawer {
+    /* Set the drawer to be fixed to the viewport's right edge (0) */
+    position: fixed; 
+    top: 0;
+    right: 0 !important; /* Forces it open */
+    height: 100vh;
+    width: 320px; /* Keep fixed width */
+    
+    transition: none;    /* Disable animation for fixed state */
+    box-shadow: none;    
+    border-right: none;
+    z-index: 5000;
+  }
+
+  /* 3. Hide all Toggle Buttons */
+  #network-btn,
+  .close-drawer-btn {
+    display: none !important;
+  }
+}
+
+@media (min-width: 700px) {
+  #handlayout, #table { left: calc(25% + 3.1vw); }
+}
+
+@media (min-width: 800px) {
+  #handlayout, #table { left: calc(25% + 6.5vw); }
+}
+
+@media (min-width: 900px) {
+  #handlayout, #table { left: calc(25% + 9.5vw); }
+}
+@media (min-width: 1000px) {
+  #handlayout, #table { left: calc(25% + 10vw); }
+}
+@media (min-width: 1100px) {
+  #handlayout, #table { left: calc(25% + 12vw); }
+}
+@media (min-width: 1200px) {
+  #handlayout, #table { left: calc(25% + 13vw); }
+}
+@media (min-width: 1300px) {
+  #handlayout, #table { left: calc(25% + 15vw); }
+}
+
+  </style>
+  </head>
 <body>
   <!-- === Player Selection Modal === -->
 <div id="player-selection-modal">
@@ -785,13 +1344,13 @@
     </button>
   </div>
 </div>
-
+<button id="new-game">New Game</button>
   <button id="installBtn">📲 Install App</button>
+<div id="game-container">
 
-  <div id="game-container">
-    <div id="table"></div>
-  </div>
-  <button id="new-game">New Game</button>
+   <div id="table"></div>
+   
+  <div id="handlayout">
   <div id="players">
     <div class="player-hand player-south" data-player="0"></div>
     <div class="player-hand player-east" data-player="1"></div>
@@ -802,8 +1361,7 @@
     <div id="boneyard-tiles" style="display: grid; grid-template-columns: repeat(7, auto); gap: 1px;"></div>
   </div>
   <button id="options-button">Options</button>
-
-  <div id="options-menu">
+  <div id="options-menu">    
     <span id="close-options" class="close-btn">&times;</span>
     <label>Players
       <select id="numPlayers">
@@ -841,16 +1399,19 @@
       </select>
     </label>
   </div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.3.0</div>
+  <div  id="betDiv">
   <select id="bets">
-    <option value="1000">1000</option>
-    <option value="10000" selected>10000</option>
-    <option value="50000">50000</option>
-    <option value="100000">100000</option>
-    <option value="500000">500000</option>
-    <option value="1000000">1000000</option>
-  </select>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.2.6</div>
-
+  <option value="1000">$1,000</option>
+    <option value="10000" selected>$10,000</option>
+    <option value="50000">$50,000</option>
+    <option value="100000">$100,000</option>
+    <option value="500000">$500,000</option>
+    <option value="1000000">$1,000,000</option>
+  </select>   
+</div>  
+   </div>
+ </div>
 <script>
   // PWA Install Script
     let deferredPrompt;
@@ -4496,6 +5057,268 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 });
 </script>
+<button id="network-btn" title="Network Menu">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="11 17 6 12 11 7"></polyline>
+    <polyline points="18 17 13 12 18 7"></polyline>
+  </svg>
+</button>
+<div id="network-drawer">
+  <div id="message-center">
+    <div class="drawer-header">
+      <span>📣 Message Center</span>
+      <button id="close-drawer" class="close-drawer-btn">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="13 17 18 12 13 7"></polyline>
+          <polyline points="6 17 11 12 6 7"></polyline>
+        </svg>
+      </button>
+    </div>
+    <div id="message-list">
+      <div class="msg-server"><span>[Server]</span> Welcome to the game lobby!</div>
+      <div class="msg-server"><span>[Server]</span> Game: Domino. Room: Common.</div>
+      <div class="msg-user"><span>User 'Player_123'</span> has joined Table #1.</div>
+      <div class="msg-game"><span>[Game]</span> Table #1: 'Player_456' won $10,000.</div>
+      <div class="msg-user"><span>User 'Guest_789'</span> has left Table #2.</div>
+      <div class="msg-server"><span>[Server]</span> Tip: You can create a new table in the 'New' tab.</div>
+      <div class="msg-user"><span>User 'DominoPro'</span> has joined Table #1.</div>
+      <div class="msg-game"><span>[Game]</span> Table #2: 'Player_123' won $5,000.</div>
+      <div class="msg-server"><span>[Server]</span> 'Tiến Lên' is now available!</div>
+      <div class="msg-user"><span>User 'Newbie'</span> has created Table #5.</div>
+	  <div class="msg-server"><span>[Server]</span> Welcome to the game lobby!</div>
+      <div class="msg-server"><span>[Server]</span> Game: Domino. Room: Common.</div>
+      <div class="msg-user"><span>User 'Player_123'</span> has joined Table #1.</div>
+      <div class="msg-game"><span>[Game]</span> Table #1: 'Player_456' won $10,000.</div>
+      <div class="msg-user"><span>User 'Guest_789'</span> has left Table #2.</div>
+      <div class="msg-server"><span>[Server]</span> Tip: You can create a new table in the 'New' tab.</div>
+      <div class="msg-user"><span>User 'DominoPro'</span> has joined Table #1.</div>
+      <div class="msg-game"><span>[Game]</span> Table #2: 'Player_123' won $5,000.</div>
+      <div class="msg-server"><span>[Server]</span> 'Tiến Lên' is now available!</div>
+      <div class="msg-user"><span>User 'Newbie'</span> has created Table #5.</div>
+    </div>
+  </div>
+
+  <div id="network-tabs">
+    <div class="tab-content" id="rooms-tab">
+      <div class="tab-header">🏠 Rooms</div>
+      <div class="tab-scroll">
+        <div class="room-item active" data-game="domino">
+          <div class="room-icon">🁾 Domino</div>
+          <div class="room-info">
+            <div class="room-name">Common Room</div>
+            <div class="room-stats">234 players • 58 tables</div>
+          </div>
+        </div>
+        <div class="room-item" data-game="tienlen">
+          <div class="room-icon">🂡 Tiến Lên</div>
+          <div class="room-info">
+            <div class="room-name">Common Room</div>
+            <div class="room-stats">189 players • 47 tables</div>
+          </div>
+        </div>
+        </div>
+    </div>
+
+    <div class="tab-content" id="tables-tab">
+      <div class="tab-header">🪑 Tables (Domino)</div>
+      <div class="tab-scroll">
+        <div class="table-item">
+          <div class="table-info">
+            <div class="table-name">Table #1 - High Stakes</div>
+            <div class="table-details">
+              <span>💰 Bet: $10,000</span>
+              <span>👥 3/4 players</span>
+            </div>
+          </div>
+          <button class="join-btn">Join</button>
+        </div>
+        <div class="table-item">
+          <div class="table-info">
+            <div class="table-name">Table #2 - Casual</div>
+            <div class="table-details">
+              <span>💰 Bet: $1,000</span>
+              <span>👥 2/4 players</span>
+            </div>
+          </div>
+          <button class="join-btn">Join</button>
+        </div>
+        <div class="table-item">
+          <div class="table-info">
+            <div class="table-name">Table #3 - Mega</div>
+            <div class="table-details">
+              <span>💰 Bet: $100,000</span>
+              <span>👥 1/3 players</span>
+            </div>
+          </div>
+          <button class="join-btn">Join</button>
+        </div>
+        <div class="table-item full">
+          <div class="table-info">
+            <div class="table-name">Table #4 - Pro</div>
+            <div class="table-details">
+              <span>💰 Bet: $50,000</span>
+              <span>👥 4/4 players</span>
+            </div>
+          </div>
+          <button class="join-btn" disabled>Full</button>
+        </div>
+         <div class="table-item">
+          <div class="table-info">
+            <div class="table-name">Table #5 - Newbie</div>
+            <div class="table-details">
+              <span>💰 Bet: $1,000</span>
+              <span>👥 1/4 players</span>
+            </div>
+          </div>
+          <button class="join-btn">Join</button>
+        </div>
+        </div>
+    </div>
+<div class="tab-content" id="newtable-tab">
+  <div class="tab-header">✚ New Table</div>
+  <div class="tab-scroll">
+    <div class="create-table-form">
+
+      <label class="full-width">
+        <span>Table Name:</span>
+        <input type="text" id="table-name-input" placeholder="My Awesome Table" maxlength="30">
+      </label>
+
+      <div class="form-row">
+        <label>
+          <span>Game:</span>
+          <select id="game-select">
+            <option value="domino">🁾 Domino</option>
+            <option value="tienlen">🂡  Tiến Lên</option>
+          </select>
+        </label>
+        <label>
+          <span>Max Players:</span>
+          <select id="players-select">
+            <option value="2">2 Players</option>
+            <option value="3">3 Players</option>
+            <option value="4" selected="">4 Players</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="form-row">
+        <label>
+          <span>Bet Amount:</span>
+          <select id="bet-select">
+            <option value="1000">$1,000</option>
+            <option value="10000" selected="">$10,000</option>
+            <option value="50000">$50,000</option>
+            <option value="100000">$100,000</option>
+            <option value="500000">$500,000</option>
+          </select>
+        </label>
+        <label>
+          <span>Privacy:</span>
+          <select id="privacy-select">
+            <option value="public">🌍 Public</option>
+            <option value="private">🔒 Private</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="password-field" class="full-width" style="display: none;">
+        <label>
+          <span>Password:</span>
+          <input type="password" id="table-password" placeholder="Enter password" maxlength="20">
+        </label>
+      </div>
+
+      <button id="create-table-btn" class="create-btn">Create Table</button>
+    </div>
+  </div>
+</div>
+<div class="chat-input-bar">
+  <input id="chat-input" type="text" placeholder="Type your message..." maxlength="200">
+  <button id="composer-submit-button" aria-label="Send prompt" data-testid="send-button" class="composer-submit-btn" disabled>
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg" class="icon">
+      <path d="M8.99992 16V6.41407L5.70696 9.70704C5.31643 10.0976 4.68342 10.0976 4.29289 9.70704C3.90237 9.31652 3.90237 8.6835 4.29289 8.29298L9.29289 3.29298L9.36907 3.22462C9.76184 2.90427 10.3408 2.92686 10.707 3.29298L15.707 8.29298L15.7753 8.36915C16.0957 8.76192 16.0731 9.34092 15.707 9.70704C15.3408 10.0732 14.7618 10.0958 14.3691 9.7754L14.2929 9.70704L10.9999 6.41407V16C10.9999 16.5523 10.5522 17 9.99992 17C9.44764 17 8.99992 16.5523 8.99992 16Z"></path>
+    </svg>
+  </button>
+</div>
+
+    <div class="tab-buttons">
+      <button class="tab-btn" data-tab="rooms">🏠 Rooms</button>
+      <button class="tab-btn" data-tab="tables">🪑 Tables</button>
+      <button class="tab-btn" data-tab="newtable">✚ New Table</button>
+    </div>
+  </div>
+</div>
+<script>
+// === Network Drawer Logic ===
+document.addEventListener('DOMContentLoaded', () => {
+  const networkBtn = document.getElementById('network-btn');
+  const closeDrawerBtn = document.getElementById('close-drawer');
+  const networkDrawer = document.getElementById('network-drawer');
+  
+  if (networkBtn && closeDrawerBtn && networkDrawer) {
+    // --- Toggle Drawer ---
+    networkBtn.addEventListener('click', () => {
+      networkDrawer.classList.add('open');
+    });
+    
+    closeDrawerBtn.addEventListener('click', () => {
+      networkDrawer.classList.remove('open');
+    });
+  }
+
+  // --- Tab Switching + ▼ Arrow Toggle ---
+  const tabContainer = document.querySelector('#network-tabs .tab-buttons');
+  if (tabContainer) {
+    tabContainer.addEventListener('click', (e) => {
+      const btn = e.target.closest('.tab-btn');
+      if (!btn) return;
+
+      const tabName = btn.dataset.tab;
+      if (!tabName) return;
+
+      const content = document.getElementById(tabName + '-tab');
+
+      // If same tab clicked again → close it
+      if (btn.classList.contains('active')) {
+        btn.classList.remove('active');
+        content?.classList.remove('active');
+        return;
+      }
+
+      // Reset all buttons & contents
+      tabContainer.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+      document.querySelectorAll('#network-tabs .tab-content').forEach((c) => c.classList.remove('active'));
+
+      // Activate the clicked one
+      btn.classList.add('active');
+      content?.classList.add('active');
+    });
+  }
+
+  // --- New Table Form Logic ---
+  const privacySelect = document.getElementById('privacy-select');
+  const passwordField = document.getElementById('password-field');
+  if (privacySelect && passwordField) {
+    privacySelect.addEventListener('change', () => {
+      if (privacySelect.value === 'private') {
+        passwordField.style.display = 'block';
+      } else {
+        passwordField.style.display = 'none';
+      }
+    });
+  }
+
+  // --- Message List Scroll ---
+  const messageList = document.getElementById('message-list');
+  if (messageList) {
+    // Ensure scroll starts at the bottom (most recent message)
+    messageList.scrollTop = messageList.scrollHeight;
+  }
+});
+
+</script>
+    
 
 </body>
 </html>
