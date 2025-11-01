@@ -1363,7 +1363,7 @@ color: #0f0;
       </select>
     </label>
   </div>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.3.9</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.4.0</div>
   <div  id="betDiv">
   <select id="bets">
   <option value="1000">$1,000</option>
@@ -4690,103 +4690,107 @@ if (!gameOver && currentActivePlayerTurn === 0) {
                 gameState.selectedIndex = -1;
                 e.dataTransfer.setData('text/plain', JSON.stringify(tile));
               };
+///
 
-              tileDiv.addEventListener('touchstart', (e) => {
-                initAudioContext();
-                if (!soundLocked) canPlaySound = true;
-                draggedTile = tile;
-                gameState.selectedIndex = -1;
+tileDiv.addEventListener('touchstart', (e) => {
+    initAudioContext();
+    if (!soundLocked) canPlaySound = true;
+    draggedTile = tile;
+    gameState.selectedIndex = -1;
 
-                const touch = e.touches[0];
-                const ghost = tileDiv.cloneNode(true);
-                ghost.style.position = 'fixed';
-                ghost.style.pointerEvents = 'none';
-                ghost.style.zIndex = 1000;
-                document.body.appendChild(ghost);
-                ghost.style.left = `${touch.clientX - ghost.offsetWidth / 2}px`;
-                ghost.style.top = `${touch.clientY - ghost.offsetHeight / 2}px`;
-                let moved = false;
-                
-                const onTouchMove = (ev) => {
-                  ev.preventDefault();
-                  if (ev.touches.length === 1) {
-                    moved = true;
-                    const t = ev.touches[0];
-                    ghost.style.left = `${t.clientX - ghost.offsetWidth / 2}px`;
-                    ghost.style.top = `${t.clientY - ghost.offsetHeight / 2}px`;
-                    if (board.tiles.length > 0) {
-                      if (leftPlaceholder) leftPlaceholder.style.border = '2px dashed #6a6a6a';
-                      if (rightPlaceholder) rightPlaceholder.style.border = '2px dashed #6a6a6a';
-                      const dropX = t.clientX;
-                      const dropY = t.clientY;
-                      if (leftPlaceholder && canPlayOnEnd(draggedTile, board.leftEnd.value)) {
-                        const leftRect = leftPlaceholder.getBoundingClientRect();
-                        if (dropX > leftRect.left && dropX < leftRect.right && dropY > leftRect.top && dropY < leftRect.bottom) {
-                          leftPlaceholder.style.border = '2px dashed yellow';
-                        }
-                      }
-                      if (rightPlaceholder && canPlayOnEnd(draggedTile, board.rightEnd.value)) {
-                        const rightRect = rightPlaceholder.getBoundingClientRect();
-                        if (dropX > rightRect.left && dropX < rightRect.right && dropY > rightRect.top && dropY < rightRect.bottom) {
-                          rightPlaceholder.style.border = '2px dashed yellow';
-                        }
-                      }
+    const touch = e.touches[0];
+    const ghost = tileDiv.cloneNode(true);
+    ghost.style.position = 'fixed';
+    ghost.style.pointerEvents = 'none';
+    ghost.style.zIndex = 1000;
+    document.body.appendChild(ghost);
+    ghost.style.left = `${touch.clientX - ghost.offsetWidth / 2}px`;
+    ghost.style.top = `${touch.clientY - ghost.offsetHeight / 2}px`;
+    let moved = false;
+    
+    const onTouchMove = (ev) => {
+        if (ev.cancelable) {  // <-- Add this check to skip if non-cancelable (fixes warning)
+            ev.preventDefault();
+        }
+        if (ev.touches.length === 1) {
+            moved = true;
+            const t = ev.touches[0];
+            ghost.style.left = `${t.clientX - ghost.offsetWidth / 2}px`;
+            ghost.style.top = `${t.clientY - ghost.offsetHeight / 2}px`;
+            if (board.tiles.length > 0) {
+                if (leftPlaceholder) leftPlaceholder.style.border = '2px dashed #6a6a6a';
+                if (rightPlaceholder) rightPlaceholder.style.border = '2px dashed #6a6a6a';
+                const dropX = t.clientX;
+                const dropY = t.clientY;
+                if (leftPlaceholder && canPlayOnEnd(draggedTile, board.leftEnd.value)) {
+                    const leftRect = leftPlaceholder.getBoundingClientRect();
+                    if (dropX > leftRect.left && dropX < leftRect.right && dropY > leftRect.top && dropY < leftRect.bottom) {
+                        leftPlaceholder.style.border = '2px dashed yellow';
                     }
-                  }
-                };
-                
-                const onTouchEnd = (ev) => {
-                  document.removeEventListener('touchmove', onTouchMove);
-                  document.removeEventListener('touchend', onTouchEnd);
-                  ghost.remove();
-                  if (board.tiles.length > 0) {
-                    if (leftPlaceholder) leftPlaceholder.style.border = '2px dashed #6a6a6a';
-                    if (rightPlaceholder) rightPlaceholder.style.border = '2px dashed #6a6a6a';
-                  }
-                  if (!moved) {
-                    draggedTile = null;
-                    return;
-                  }
-                  if (moved) {
-                    tileDiv.dataset.justMoved = 'true';
-                  }
-                  const dropTouch = ev.changedTouches[0] || {clientX: 0, clientY: 0};
-                  let dropped = false;
-                  const dropX = dropTouch.clientX;
-                  const dropY = dropTouch.clientY;
-                  if (board.tiles.length === 0) {
-                    const tableRect = tableDiv.getBoundingClientRect();
-                    if (dropX > tableRect.left && dropX < tableRect.right && dropY > tableRect.top && dropY < tableRect.bottom) {
-                      playTile(gameState, draggedTile, 'right');
-                      dropped = true;
+                }
+                if (rightPlaceholder && canPlayOnEnd(draggedTile, board.rightEnd.value)) {
+                    const rightRect = rightPlaceholder.getBoundingClientRect();
+                    if (dropX > rightRect.left && dropX < rightRect.right && dropY > rightRect.top && dropY < rightRect.bottom) {
+                        rightPlaceholder.style.border = '2px dashed yellow';
                     }
-                  } else {
-                    if (leftPlaceholder) {
-                      const leftRect = leftPlaceholder.getBoundingClientRect();
-                      if (dropX > leftRect.left && dropX < leftRect.right && dropY > leftRect.top && dropY < leftRect.bottom) {
-                        if (canPlayOnEnd(draggedTile, board.leftEnd.value)) {
-                          playTile(gameState, draggedTile, 'left');
-                          dropped = true;
-                        }
-                      }
-                    }
-                    if (rightPlaceholder) {
-                      const rightRect = rightPlaceholder.getBoundingClientRect();
-                      if (dropX > rightRect.left && dropX < rightRect.right && dropY > rightRect.top && dropY < rightRect.bottom) {
-                        if (canPlayOnEnd(draggedTile, board.rightEnd.value)) {
-                          playTile(gameState, draggedTile, 'right');
-                          dropped = true;
-                        }
-                      }
-                    }
-                  }
-                  draggedTile = null;
-                };
-                
-                document.addEventListener('touchmove', onTouchMove, {passive: false});
-                document.addEventListener('touchend', onTouchEnd, {passive: false});
-              }, { passive: true });
+                }
             }
+        }
+    };
+    
+    const onTouchEnd = (ev) => {
+        document.removeEventListener('touchmove', onTouchMove);
+        document.removeEventListener('touchend', onTouchEnd);
+        ghost.remove();
+        if (board.tiles.length > 0) {
+            if (leftPlaceholder) leftPlaceholder.style.border = '2px dashed #6a6a6a';
+            if (rightPlaceholder) rightPlaceholder.style.border = '2px dashed #6a6a6a';
+        }
+        if (!moved) {
+            draggedTile = null;
+            return;
+        }
+        if (moved) {
+            tileDiv.dataset.justMoved = 'true';
+        }
+        const dropTouch = ev.changedTouches[0] || {clientX: 0, clientY: 0};
+        let dropped = false;
+        const dropX = dropTouch.clientX;
+        const dropY = dropTouch.clientY;
+        if (board.tiles.length === 0) {
+            const tableRect = tableDiv.getBoundingClientRect();
+            if (dropX > tableRect.left && dropX < tableRect.right && dropY > tableRect.top && dropY < tableRect.bottom) {
+                playTile(gameState, draggedTile, 'right');
+                dropped = true;
+            }
+        } else {
+            if (leftPlaceholder) {
+                const leftRect = leftPlaceholder.getBoundingClientRect();
+                if (dropX > leftRect.left && dropX < leftRect.right && dropY > leftRect.top && dropY < leftRect.bottom) {
+                    if (canPlayOnEnd(draggedTile, board.leftEnd.value)) {
+                        playTile(gameState, draggedTile, 'left');
+                        dropped = true;
+                    }
+                }
+            }
+            if (rightPlaceholder) {
+                const rightRect = rightPlaceholder.getBoundingClientRect();
+                if (dropX > rightRect.left && dropX < rightRect.right && dropY > rightRect.top && dropY < rightRect.bottom) {
+                    if (canPlayOnEnd(draggedTile, board.rightEnd.value)) {
+                        playTile(gameState, draggedTile, 'right');
+                        dropped = true;
+                    }
+                }
+            }
+        }
+        draggedTile = null;
+    };
+    
+    document.addEventListener('touchmove', onTouchMove, {passive: false});
+    document.addEventListener('touchend', onTouchEnd, {passive: false});
+}, { passive: true });
+///
+		   }
           }
         }
         tilesContainer.appendChild(tileDiv);
