@@ -1364,7 +1364,7 @@ color: #0f0;
       </select>
     </label>
   </div>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.4.2</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.4.3</div>
   <div  id="betDiv">
   <select id="bets">
   <option value="1000">$1,000</option>
@@ -2559,15 +2559,22 @@ function updateQ(gameState, playerIndex, actionMove, reward, nextGameState) {
   const s = stateKey(gameState, playerIndex);
   const s2 = stateKey(nextGameState, playerIndex);
   
-  if (!Q[s] || typeof Q[s] !== 'object') Q[s] = {};
-  if (!Q[s2] || typeof Q[s2] !== 'object') Q[s2] = {};
+  // 1. KEEP: Only initialize the CURRENT state (s) if needed
+  if (!Q[s] || typeof Q[s] !== 'object') Q[s] = {}; 
+  // ❌ REMOVE THIS LINE: if (!Q[s2] || typeof Q[s2] !== 'object') Q[s2] = {}; 
 
   const a = actionKey(actionMove);
   const old = Q[s][a] ?? 0;
-  const maxNext = maxQForStateKey(s2);
-  const updated = old + alpha * (reward + gamma * maxNext - old);
-  // ⭐ NEW: Truncate the Q-value to 2 decimal places
+  
+  // NOTE: maxQForStateKey must be safe and return 0 if s2 doesn't exist in Q
+  const maxNext = maxQForStateKey(s2); 
+  
+  // Ensure this is `let` to allow reassignment
+  let updated = old + alpha * (reward + gamma * maxNext - old); 
+  
+  // ⭐ Truncate the Q-value to 2 decimal places (Your line)
   updated = Math.floor(updated * 100) / 100;
+  
   // ⭐ USE LOW THRESHOLD DURING TRAINING (keep most learning)
   if (Math.abs(updated) >= TRAINING_THRESHOLD) {
     Q[s][a] = updated;
@@ -2578,11 +2585,9 @@ function updateQ(gameState, playerIndex, actionMove, reward, nextGameState) {
   // ⭐ Only remove TRULY empty states during training
   try {
     if (Q[s] && typeof Q[s] === 'object' && Object.keys(Q[s]).length === 0) {
-      delete Q[s];
+      delete Q[s]; // Only clean up the state we were just working on
     }
-    if (Q[s2] && typeof Q[s2] === 'object' && Object.keys(Q[s2]).length === 0) {
-      delete Q[s2];
-    }
+    // ❌ REMOVE THIS LINE: if (Q[s2] && typeof Q[s2] === 'object' && Object.keys(Q[s2]).length === 0) { delete Q[s2]; }
   } catch (e) {
     // Silently ignore
   }
