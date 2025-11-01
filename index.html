@@ -5015,16 +5015,15 @@ async function loadPretrainedDominoAI() {
     const nextFile = `${prefix}${nextNum}${suffix}`;
     const nextUrl = `${baseUrl}${nextFile}`;
 
-    try {
-      const res = await fetch(nextUrl, { method: 'HEAD', cache: 'no-cache' });
-      if (res.ok) {
-        currentFile = nextFile;
-      } else {
-        localStorage.setItem(NEXT_CHECK_KEY, (now + 3000).toString());
-      }
-    } catch {
-      localStorage.setItem(NEXT_CHECK_KEY, (now + 3000).toString());
-    }
+  try {
+  const res = await fetch(nextUrl, { method: 'HEAD', cache: 'no-cache' }).catch(() => null);
+  if (res && res.status === 200) {
+    currentFile = nextFile;
+  } else {
+    localStorage.setItem(NEXT_CHECK_KEY, (now + 3000).toString());
+  }
+} catch {}
+
   }
 
   AI_REMOTE_URL = `${baseUrl}${currentFile}`;
