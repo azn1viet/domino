@@ -5009,10 +5009,10 @@ async function loadPretrainedDominoAI() {
       if (res.ok) {
         currentFile = nextFile;
       } else {
-        localStorage.setItem(NEXT_CHECK_KEY, (now + 3600000).toString());
+        localStorage.setItem(NEXT_CHECK_KEY, (now + 3000).toString());
       }
     } catch {
-      localStorage.setItem(NEXT_CHECK_KEY, (now + 3600000).toString());
+      localStorage.setItem(NEXT_CHECK_KEY, (now + 3000).toString());
     }
   }
 
