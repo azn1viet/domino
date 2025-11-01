@@ -1363,7 +1363,7 @@ color: #0f0;
       </select>
     </label>
   </div>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.3.7</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.3.8</div>
   <div  id="betDiv">
   <select id="bets">
   <option value="1000">$1,000</option>
@@ -4974,27 +4974,25 @@ function mergeBaseAndUserData(newBase, localData) {
   return merged;
 }
 
-// --- Helper to find the latest version using binary search ---
+// --- Helper to find the latest version using linear search ---
 async function findLatestVersion(prefix, currentNum, suffix, baseUrl) {
-  let low = currentNum + 1;
-  let high = 1000000; // Arbitrary high limit; adjust if needed
+  let version = currentNum + 1;
   let latest = currentNum;
 
-  while (low <= high) {
-    const mid = Math.floor((low + high) / 2);
-    const file = `${prefix}${mid}${suffix}`;
+  while (true) {
+    const file = `${prefix}${version}${suffix}`;
     const url = `${baseUrl}${file}`;
 
     try {
       const res = await fetch(url, { method: 'HEAD', cache: 'no-cache' });
       if (res.ok) {
-        latest = mid;
-        low = mid + 1;
+        latest = version;
+        version++;
       } else {
-        high = mid - 1;
+        break;
       }
     } catch {
-      high = mid - 1;
+      break;
     }
   }
 
