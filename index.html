@@ -1364,7 +1364,7 @@ color: #0f0;
       </select>
     </label>
   </div>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.4.1</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.4.2</div>
   <div  id="betDiv">
   <select id="bets">
   <option value="1000">$1,000</option>
@@ -2566,7 +2566,8 @@ function updateQ(gameState, playerIndex, actionMove, reward, nextGameState) {
   const old = Q[s][a] ?? 0;
   const maxNext = maxQForStateKey(s2);
   const updated = old + alpha * (reward + gamma * maxNext - old);
-  
+  // ⭐ NEW: Truncate the Q-value to 2 decimal places
+  updated = Math.floor(updated * 100) / 100;
   // ⭐ USE LOW THRESHOLD DURING TRAINING (keep most learning)
   if (Math.abs(updated) >= TRAINING_THRESHOLD) {
     Q[s][a] = updated;
