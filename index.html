@@ -1363,7 +1363,7 @@ color: #0f0;
       </select>
     </label>
   </div>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.3.8</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.3.9</div>
   <div  id="betDiv">
   <select id="bets">
   <option value="1000">$1,000</option>
@@ -4923,6 +4923,7 @@ startGameBtn.addEventListener('click', async () => {
 const LOCAL_Q_KEY        = "Domino_AI_Q";
 const LOCAL_BASE_KEY     = "Domino_AI_Base";
 const LOCAL_VERSION_KEY  = "Domino_AI_VERSION";
+const NEXT_CHECK_KEY     = "Domino_AI_NextCheckTime";
 
 // --- Optional remote source (safe check) ---
 let AI_REMOTE_URL = null; // Will be set dynamically
@@ -4974,35 +4975,6 @@ function mergeBaseAndUserData(newBase, localData) {
   return merged;
 }
 
-// --- Helper to find the latest version using linear search ---
-async function findLatestVersion(prefix, currentNum, suffix, baseUrl) {
-  let version = currentNum + 1;
-  let latest = currentNum;
-
-  while (true) {
-    const file = `${prefix}${version}${suffix}`;
-    const url = `${baseUrl}${file}`;
-
-    try {
-      const res = await fetch(url, { method: 'HEAD', cache: 'no-cache' });
-      if (res.ok) {
-        latest = version;
-        version++;
-      } else {
-        break;
-      }
-    } catch {
-      break;
-    }
-  }
-
-  if (latest > currentNum) {
-    return `${prefix}${latest}${suffix}`;
-  } else {
-    return null; // No newer version found
-  }
-}
-
 // --- Loader core ---
 async function loadPretrainedDominoAI() {
   let aiLoaded = false;
@@ -5024,10 +4996,24 @@ async function loadPretrainedDominoAI() {
   const currentNum = parseInt(versionMatch[2]);
   const suffix = versionMatch[3];
 
-  // Check for newer version dynamically
-  const latestFile = await findLatestVersion(prefix, currentNum, suffix, baseUrl);
-  if (latestFile) {
-    currentFile = latestFile;
+  let nextCheckTime = parseInt(localStorage.getItem(NEXT_CHECK_KEY) || "0");
+  const now = Date.now();
+
+  if (now >= nextCheckTime) {
+    const nextNum = currentNum + 1;
+    const nextFile = `${prefix}${nextNum}${suffix}`;
+    const nextUrl = `${baseUrl}${nextFile}`;
+
+    try {
+      const res = await fetch(nextUrl, { method: 'HEAD', cache: 'no-cache' });
+      if (res.ok) {
+        currentFile = nextFile;
+      } else {
+        localStorage.setItem(NEXT_CHECK_KEY, (now + 3600000).toString());
+      }
+    } catch {
+      localStorage.setItem(NEXT_CHECK_KEY, (now + 3600000).toString());
+    }
   }
 
   AI_REMOTE_URL = `${baseUrl}${currentFile}`;
