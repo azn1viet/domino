@@ -1363,7 +1363,7 @@ color: #0f0;
       </select>
     </label>
   </div>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.3.6</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.3.7</div>
   <div  id="betDiv">
   <select id="bets">
   <option value="1000">$1,000</option>
@@ -4925,11 +4925,7 @@ const LOCAL_BASE_KEY     = "Domino_AI_Base";
 const LOCAL_VERSION_KEY  = "Domino_AI_VERSION";
 
 // --- Optional remote source (safe check) ---
-let AI_REMOTE_URL = "https://azn1viet.github.io/domino/4K2P3P4P_v3.json";
-if (typeof AI_REMOTE_URL === "undefined" || !AI_REMOTE_URL) {
-  console.warn("⚠️ No AI_REMOTE_URL found — skipping AI load.");
-  AI_REMOTE_URL = null;
-}
+let AI_REMOTE_URL = null; // Will be set dynamically
 
 // --- Mark all modes as trained ONLY if AI JSON is successfully downloaded ---
 function ensureTrainedFlags(aiLoaded) {
@@ -4937,6 +4933,16 @@ function ensureTrainedFlags(aiLoaded) {
     console.warn("⚠️ Skipping trained flags — AI data not loaded or URL is null.");
     return;
   }
+
+  localStorage.setItem("Domino_AI_Trained_2P", "true");
+  localStorage.setItem("Domino_AI_Trained_3P", "true");
+  localStorage.setItem("Domino_AI_Trained_4P", "true");
+
+  window.Domino_AI_Trained_2P = "true";
+  window.Domino_AI_Trained_3P = "true";
+  window.Domino_AI_Trained_4P = "true";
+
+  console.log("🏁 All training flags set to true (AI JSON loaded).");
 }
 
 // --- Merge helper ---
@@ -4968,11 +4974,65 @@ function mergeBaseAndUserData(newBase, localData) {
   return merged;
 }
 
+// --- Helper to find the latest version using binary search ---
+async function findLatestVersion(prefix, currentNum, suffix, baseUrl) {
+  let low = currentNum + 1;
+  let high = 1000000; // Arbitrary high limit; adjust if needed
+  let latest = currentNum;
+
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    const file = `${prefix}${mid}${suffix}`;
+    const url = `${baseUrl}${file}`;
+
+    try {
+      const res = await fetch(url, { method: 'HEAD', cache: 'no-cache' });
+      if (res.ok) {
+        latest = mid;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    } catch {
+      high = mid - 1;
+    }
+  }
+
+  if (latest > currentNum) {
+    return `${prefix}${latest}${suffix}`;
+  } else {
+    return null; // No newer version found
+  }
+}
 
 // --- Loader core ---
 async function loadPretrainedDominoAI() {
   let aiLoaded = false;
   const localData = JSON.parse(localStorage.getItem(LOCAL_Q_KEY) || "{}");
+
+  const baseUrl = "https://azn1viet.github.io/domino/";
+  const hardcodedFile = "4K2P3P4P_v3.json";
+  let currentFile = localStorage.getItem(LOCAL_VERSION_KEY) || hardcodedFile;
+
+  const versionMatch = currentFile.match(/(.*_v)(\d+)(\.json)$/);
+  if (!versionMatch) {
+    console.warn("⚠️ Invalid version format. Skipping AI load.");
+    window.aiQTable = {};
+    ensureTrainedFlags(false);
+    return {};
+  }
+
+  const prefix = versionMatch[1];
+  const currentNum = parseInt(versionMatch[2]);
+  const suffix = versionMatch[3];
+
+  // Check for newer version dynamically
+  const latestFile = await findLatestVersion(prefix, currentNum, suffix, baseUrl);
+  if (latestFile) {
+    currentFile = latestFile;
+  }
+
+  AI_REMOTE_URL = `${baseUrl}${currentFile}`;
 
   if (!AI_REMOTE_URL) {
     console.warn("⚠️ AI_REMOTE_URL is missing. Skipping AI load.");
@@ -4982,7 +5042,7 @@ async function loadPretrainedDominoAI() {
   }
 
   const currentVersion = AI_REMOTE_URL.split("/").pop();
-  const cachedVersion  = localStorage.getItem(LOCAL_VERSION_KEY);
+  const cachedVersion = localStorage.getItem(LOCAL_VERSION_KEY);
 
   try {
     if (cachedVersion === currentVersion && Object.keys(localData).length) {
@@ -5020,17 +5080,7 @@ async function loadPretrainedDominoAI() {
     window.aiQTable = merged;
     ensureTrainedFlags(aiLoaded);
     console.log(`✅ AI loaded (${Object.keys(merged).length} records).`);
-		
-  localStorage.setItem("Domino_AI_Trained_2P", "true");
-  localStorage.setItem("Domino_AI_Trained_3P", "true");
-  localStorage.setItem("Domino_AI_Trained_4P", "true");
-
-  window.Domino_AI_Trained_2P = "true";
-  window.Domino_AI_Trained_3P = "true";
-  window.Domino_AI_Trained_4P = "true";
-
-  console.log("🏁 All training flags set to true (AI JSON loaded).");
-  
+    
     return merged;
 
   } catch (err) {
@@ -5048,7 +5098,6 @@ async function loadPretrainedDominoAI() {
   }
 }
 
-///
 function saveDominoAILearning(updatedQ) {
   localStorage.setItem(LOCAL_Q_KEY, JSON.stringify(updatedQ));
   console.log("🧠 Domino AI updated locally.");
