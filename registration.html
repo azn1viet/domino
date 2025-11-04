@@ -1,0 +1,1434 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Domino Portal</title>
+  <style>
+    body {
+      font-family: "Segoe UI", sans-serif;
+      background-color: #444;
+      color: #fff;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    h1 {
+      color: lime;
+      margin-top: 40px;
+      text-shadow: 0 0 10px lime;
+    }
+
+    .card {
+      width: 95%;
+      max-width: 420px;
+      background: #333;
+      padding: 30px;
+      border-radius: 15px;
+      border: 3px solid #0f0;
+      text-align: center;
+      box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+      margin-top: 30px;
+    }
+
+    .tabs {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 10px 0;
+      background: #222;
+      color: #999;
+      cursor: pointer;
+      border-top-left-radius: 10px;
+      border-top-right-radius: 10px;
+      border-bottom: 2px solid #0f0;
+      transition: 0.3s;
+    }
+
+    .tab.active {
+      background: lime;
+      color: #222;
+      font-weight: bold;
+    }
+
+    form {
+      display: none;
+      flex-direction: column;
+    }
+
+    form.active {
+      display: flex;
+    }
+
+    input {
+      margin: 6px 0;
+      padding: 10px;
+      border: 1px solid #666;
+      border-radius: 8px;
+      background: #222;
+      color: #fff;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: lime;
+      box-shadow: 0 0 6px lime;
+    }
+
+    button {
+      margin-top: 10px;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      background: lime;
+      color: #222;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    button:hover {
+      background: #bfff00;
+      transform: scale(1.03);
+    }
+
+    #result {
+      margin-top: 20px;
+      background: #222;
+      padding: 10px 20px;
+      border-radius: 10px;
+      max-width: 600px;
+      word-break: break-all;
+	  display: none;
+    }
+
+    #userTable {
+      width: 90%;
+      max-width: 800px;
+      margin-top: 30px;
+      border-collapse: collapse;
+      background: #333;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    #userTable th, #userTable td {
+      padding: 10px;
+      border-bottom: 1px solid #555;
+    }
+
+    #userTable th {
+      background: lime;
+      color: #222;
+    }
+
+    #logoutBtn {
+      background: transparent;
+      color: lime;
+      border: 1px solid lime;
+      border-radius: 8px;
+      padding: 8px 14px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+
+    #logoutBtn:hover {
+      background: lime;
+      color: #222;
+    }
+#pwMatchIcon {
+  transition: all 0.3s ease;
+}
+
+#pwMatchIcon.match {
+  color: lime;
+  content: "✔";
+}
+
+#pwMatchIcon.mismatch {
+  color: red;
+  content: "✖";
+}
+.msgBtn {
+  background: #222;
+  border: 2px solid #00cc66; /* darker than lime */
+  border-radius: 50%;
+  color: #00cc66;
+  padding: 5px 8px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+.msgBtn:hover {
+  background: #00cc66;
+  color: #000;
+}
+.chatBox {
+  background: #222;
+  border: 2px solid #0f0;
+  border-radius: 12px;
+  padding: 10px;
+  margin-top: 8px;
+  color: #0f0;
+  text-align: left;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+}
+.chatMessages {
+  max-height: 150px;
+  overflow-y: auto;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+.chatMsg {
+  padding: 2px 0;
+}
+.chatInput {
+  display: flex;
+  gap: 5px;
+}
+.chatInput input {
+  flex: 1;
+  background: #111;
+  border: 1px solid #0f0;
+  color: #0f0;
+  padding: 5px;
+  border-radius: 6px;
+}
+.sendBtn {
+  background: #0a0;
+  border: 2px solid #0f0;
+  color: black;
+  font-weight: bold;
+  border-radius: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+.sendBtn:hover {
+  background: #00cc66;
+  border-color: #00ff88;
+}
+.msgBtn {
+  background: #222;
+  border: 2px solid #00cc66;
+  border-radius: 50%;
+  color: #00cc66;
+  padding: 5px 8px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+.msgBtn:hover {
+  background: #00cc66;
+  color: #000;
+}
+.message-popup {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: #222;
+  color: #0f0;
+  border: 1px solid #444;
+  padding: 10px 15px;
+  border-radius: 10px;
+  box-shadow: 0 0 10px rgba(0,255,0,0.3);
+  z-index: 9999;
+  font-size: 0.9rem;
+}
+#chatWindow { 
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 340px;
+  height: 285px;
+  background: rgba(25,25,25,0.72);
+  backdrop-filter: blur(12px) saturate(180%);
+  border-radius: 18px;
+  box-shadow: 0 10px 32px rgba(0,0,0,0.45);
+  display: flex;
+  flex-direction: column;
+  z-index: 9999;
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+/* header */
+#chatHeader {
+  background: transparent;
+  height: 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 14px;
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.95rem;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+#chatClose {
+  background: none;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  font-size: 1.1rem;
+  opacity: 0.7;
+  transition: 0.2s;
+  text-align: right;
+}
+#chatClose:hover {
+  opacity: 1;
+}
+
+/* message area */
+#chatMessages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0,0,0,0.4) transparent;
+}
+#chatMessages::-webkit-scrollbar {
+  width: 4px;
+}
+#chatMessages::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.4);
+  border-radius: 4px;
+}
+
+/* chat bubbles */
+.chat-bubble {
+  padding: 8px 12px;
+  border-radius: 14px;
+  max-width: 100%;
+  word-wrap: break-word;
+  font-size: 0.89rem;
+  line-height: 1.25rem;
+  color: #fff;
+  display: inline-flex;
+}
+.chat-left {
+  background: rgba(0,128,0,0.3);  /* receiver - more bright */
+  color:#fff;
+  align-self: flex-start;
+}
+
+.chat-right {
+  background: rgba(255,255,255,0.08);  /* sender dimmer */
+  color:#eee;
+  align-self: flex-end;
+}
+
+
+/* input bar */
+#chatInputArea {
+  display: flex;
+  background: rgba(255,255,255,0.06);
+  border-top: 1px solid rgba(255,255,255,0.06);
+  align-items: center;
+  padding: 8px;
+  border-radius: 0 0 18px 18px;
+}
+#chatInput {
+  flex: 1;
+  background: rgba(0,0,0,0.15);
+  border-radius: 12px;
+  border: none;
+  color: white;
+  padding: 8px 10px;
+  outline: none;
+  font-size: 0.88rem;
+}
+#chatSend {
+  margin-left: 8px;
+  background: #4a86ff;
+  color: #fff;
+  border: none;
+  padding: 8px 14px;
+  cursor: pointer;
+  border-radius: 12px;
+  font-weight: 600;
+  transition: 0.2s;
+}
+#chatSend:hover {
+  opacity: .85;
+}
+
+  </style>
+</head>
+<body>
+  <h1>Domino User Portal</h1>
+<div id="msgPopup" style="
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: #222;
+  color: #0f0;
+  border: 2px solid #0f0;
+  border-radius: 10px;
+  padding: 15px 20px;
+  box-shadow: 0 0 20px rgba(0,255,0,0.4);
+  display: none;
+  max-width: 320px;
+  z-index: 9999;
+">
+  <div id="msgPopupHeader" style="font-weight:bold; margin-bottom:8px;"></div>
+  <div id="msgPopupBody"></div>
+  <button id="msgPopupClose" style="
+    margin-top:10px;
+    background:#0f0;
+    color:#000;
+    border:none;
+    padding:5px 12px;
+    border-radius:5px;
+    cursor:pointer;
+    font-weight:bold;
+  ">OK</button>
+</div>
+
+  <div id="loginDiv" class="card">
+    <div class="tabs">
+      <div class="tab active" id="tabLogin">Login</div>
+      <div class="tab" id="tabRegister">Register</div>
+    </div>
+
+    <!-- LOGIN FORM -->
+    <form id="loginForm" class="active">
+      <input id="loginEmail" type="email" placeholder="Email" required autocomplete="regEmail"/>
+      <input id="loginPassword" type="password" placeholder="Password" required  autocomplete="current-password"/>
+      <button type="submit">Login</button>
+    </form>
+
+ <!-- REGISTER FORM -->
+<form id="registerForm">
+  <input id="regName" type="text" placeholder="User Name" required autocomplete="username" />
+  <input id="regEmail" type="email" placeholder="Email" required autocomplete="email" />
+  
+  <div style="position: relative;">
+    <input id="regPassword" type="password" placeholder="Password" required autocomplete="new-password" />
+  </div>
+
+  <div style="position: relative;">
+    <input id="regPassword2" type="password" placeholder="Re-type Password" required autocomplete="new-password" />
+    <span id="pwMatchIcon" style="
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 1.2em;
+      font-weight: bold;
+      display: none;">✔</span>
+  </div>
+
+  <button type="submit" id="registerBtn" disabled>Register</button>
+</form>
+
+  </div>
+
+  <button id="logoutBtn" style="display:none;">Logout</button>
+
+  <div id="result"></div>
+
+  <table id="userTable" style="display:none;">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Role</th>
+        <th>Status</th>
+        <th>Message</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+<!-- before your <script type="module"> -->
+<script src="https://cdn.jsdelivr.net/npm/js-sha256@0.11.0/build/sha256.min.js"></script>
+  <!-- Firebase + Logic -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
+    import {
+  getDatabase,
+  ref,
+  ref as dbRef,
+  push,
+  set,
+  get,
+  update,
+  onValue,
+  onChildAdded,
+  onDisconnect
+    } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+   // import { push, ref as dbRef, get, onChildAdded } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+  //  import { ref as dbRef, onDisconnect, set } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+  //  import { get, child } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+let activeListenerUid = null; // tracks which UID currently has an active message listener
+let messageListenerActive = false;
+
+	
+    const firebaseConfig = {
+      apiKey: "AIzaSyCDZB4hJeVRgEvPqE51lgqFEFLRIFLoeaA",
+      authDomain: "domino-88969.firebaseapp.com",
+      databaseURL: "https://domino-88969-default-rtdb.firebaseio.com",
+      projectId: "domino-88969",
+      storageBucket: "domino-88969.firebasestorage.app",
+      messagingSenderId: "509182859469",
+      appId: "1:509182859469:web:aa464212f40624d726f184",
+      measurementId: "G-0Z50D58FWJ"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+async function registerUser(userName, userEmail, userPassword) {
+  const passwordHash = sha256(userPassword);
+
+  // 1️⃣ Get existing users
+  const usersRef = ref(db, "users");
+  const snapshot = await get(usersRef);
+
+  if (snapshot.exists()) {
+    const users = snapshot.val();
+
+    // 2️⃣ Check if email already exists (case-insensitive)
+    const emailExists = Object.values(users).some(
+      (u) => u.userEmail.toLowerCase() === userEmail.toLowerCase()
+    );
+
+    if (emailExists) {
+	 document.getElementById("result").style.display = "block";
+      throw new Error(
+        "⚠️ This email is already registered. Please log in or <a href='mailto:azn1viet@gmail.com?subject=ForgotPassword'>contact Admin</a>"
+      );
+    }
+  }
+
+  // 3️⃣ Proceed if unique
+  const newUserRef = push(usersRef);
+  const uid = newUserRef.key;
+
+  const profile = {
+    uid,
+    userName,
+    userEmail,
+    userStatus: "1",
+    userRole: "0",
+    createdAt: Date.now(),
+  };
+
+  const auth = {
+    passwordHash,
+    lastLogin: null,
+  };
+
+  // 4️⃣ Write to both users and auth
+  await set(newUserRef, profile);
+  await set(ref(db, `auth/${uid}`), auth);
+
+  return { uid, profile };
+}
+
+async function loginUser(userEmail, userPassword) {
+  try {
+    const hashed = sha256(userPassword);
+
+    // 1️⃣ Get all users
+    const usersRef = ref(db, "users");
+    const usersSnap = await get(usersRef);
+    if (!usersSnap.exists()) {
+      alert("⚠️ No users found in database.");
+      return;
+    }
+    const users = usersSnap.val();
+
+    // 2️⃣ Find user by email
+    let foundUser = null;
+    for (const uid in users) {
+      const u = users[uid];
+      if (u.userEmail === userEmail) {
+        foundUser = { uid, ...u };
+        break;
+      }
+    }
+
+    if (!foundUser) {
+      alert("❌ Email not registered.");
+      return;
+    }
+
+    // 3️⃣ Get password hash from /auth/{uid}
+    const authRef = ref(db, `auth/${foundUser.uid}`);
+    const authSnap = await get(authRef);
+
+    if (!authSnap.exists()) {
+      alert("⚠️ No auth record found for this user.");
+      return;
+    }
+
+    const authData = authSnap.val();
+
+    if (authData.passwordHash !== hashed) {
+      alert("❌ Invalid password.");
+      return;
+    }
+
+// 4️⃣ Success → safely overwrite auth info permanently
+const now = Date.now();
+
+// Read current auth data once more to preserve unknown fields
+const authSnapshot = await get(authRef);
+const oldAuth = authSnapshot.exists() ? authSnapshot.val() : {};
+
+const newAuthData = {
+  // Keep the password hash & any old unknown fields
+  ...oldAuth,
+
+  // Always enforce the known permanent structure
+  passwordHash: oldAuth.passwordHash || authData.passwordHash,
+  lastLoginAt: oldAuth.currentLoginAt || now,
+  currentLoginAt: now,
+  loginCount: (oldAuth.loginCount || 0) + 1
+};
+
+// Overwrite /auth/{uid} with the safe, merged object
+await set(authRef, newAuthData);
+
+// 5️⃣ Build merged user session object
+const userSession = {
+  ...foundUser,
+  ...newAuthData
+};
+
+console.log("✅ Login success!", userSession);
+localStorage.setItem("loggedUser", JSON.stringify(userSession));
+
+alert(`✅ Welcome back, ${foundUser.userName}!`);
+
+
+// Hide the forms and show user info + table
+document.getElementById("loginDiv").style.display = "none";
+document.getElementById("result").style.display = "block";
+
+const resultBox = document.getElementById("result");
+resultBox.innerHTML = `
+  <p style="color:lime;">✅ Welcome back, <b>${foundUser.userName}</b>!</p>
+  <pre>${JSON.stringify(userSession, null, 2)}</pre>
+`;
+
+document.getElementById("logoutBtn").style.display = "inline-block";
+document.getElementById("userTable").style.display = "table";
+
+
+
+// Start watching all users
+watchUsers();
+
+// ✅ Add real-time presence + unread message handlers
+registerOnlineStatus(foundUser.uid);
+await showUnreadOnLogin(foundUser.uid); // show offline messages as popups
+listenForIncomingMessages(foundUser.uid); // listen to new ones live
+
+// Optionally: broadcast listener only when online
+if (foundUser.userStatus === "1") {
+  listenBroadcastMessages();
+}
+
+return userSession;
+
+
+  } catch (err) {
+    console.error("🔥 Login error:", err);
+    alert("⚠️ Login failed. Check console for details.");
+  }
+   /// 
+  // After login success:
+/*registerOnlineStatus(foundUser.uid);
+listenForIncomingMessages(foundUser.uid);
+showUnreadOnLogin(foundUser.uid);
+listenDirectMessages(foundUser.uid);
+ // Only attach broadcast listener while online (optional)
+  if (user.userStatus === "1") {
+    listenBroadcastMessages();
+  }
+// Once online, mark any undelivered messages as delivered
+const myInboxRef = dbRef(db, `messages/direct/${foundUser.uid}`);
+onChildAdded(myInboxRef, (snap) => {
+  const msg = snap.val();
+  if (!msg.delivered) {
+    update(snap.ref, { delivered: true, deliveryTime: Date.now() });
+  }
+});*/
+///
+  
+}
+///
+function onJoinTable(gameName, tableId) {
+  listenTableMessages(gameName, tableId);
+}
+function onLeaveTable() {
+  if (window.tableListener) off(window.tableListener);
+}
+
+///
+async function showUnreadOnLogin(uid) {
+  const inboxRef = ref(db, `messages/direct/${uid}`);
+  const snap = await get(inboxRef);
+  if (!snap.exists()) return;
+  const msgs = Object.entries(snap.val());
+  for (const [id, msg] of msgs) {
+    if (!msg.read) {
+      showPopupMessage(msg);
+      await update(ref(db, `messages/direct/${uid}/${id}`), {
+	   delivered: true,
+       deliveryTime: Date.now(),
+        read: true,
+        readAt: Date.now()
+      });
+    }
+  }
+}
+
+///
+
+///
+
+async function watchUsers() {
+  const db = getDatabase();
+  const usersRef = ref(db, "users");
+  const authRef = ref(db, "auth");
+  const table = document.getElementById("userTable");
+  const tbody = table.querySelector("tbody");
+
+  onValue(usersRef, async (snapshot) => {
+    const users = snapshot.val() || {};
+    const authSnap = await get(authRef);
+    const authData = authSnap.exists() ? authSnap.val() : {};
+
+    const now = Date.now();
+    tbody.innerHTML = "";
+
+    Object.keys(users).forEach((uid) => {
+      const u = users[uid];
+      const a = authData[uid] || {};
+      const lastLoginAt = a.currentLoginAt || 0;
+      const diffMin = Math.floor((now - lastLoginAt) / 60000);
+      const online = diffMin < 5;
+
+      // --- main user row ---
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td style="color:lime; font-weight:bold;">${u.userName}</td>
+        <td>${u.userRole === "1" ? "👑 Admin" : "👤 User"}</td>
+        <td>
+          ${
+            online
+              ? `<span style="color:lime;">●</span> Online ${diffMin === 0 ? "now" : diffMin + "m ago"}`
+              : `<span style="color:gray;">●</span> Offline`
+          }
+        </td>
+        <td>
+          <button class="msgBtn" data-uid="${uid}" title="Send Message">💬</button>
+        </td>
+      `;
+
+      // --- hidden chat row ---
+      const chatRow = document.createElement("tr");
+      chatRow.classList.add("chatRow");
+      chatRow.style.display = "none";
+      chatRow.innerHTML = `
+        <td colspan="4">
+          <div class="chatBox">
+            <div class="chatMessages" id="chat-${uid}"></div>
+            <div class="chatInput">
+              <input type="text" placeholder="Type a message..." id="msgInput-${uid}" />
+              <button class="sendBtn" data-uid="${uid}">Send</button>
+            </div>
+          </div>
+        </td>
+      `;
+
+      tbody.appendChild(tr);
+      tbody.appendChild(chatRow);
+    });
+
+    table.style.display = "table";
+
+    // ✅ Attach handlers every time the table updates
+    attachMessageHandlers();
+  });
+
+  
+}
+
+
+///
+// --- Imports (ensure these are present at top of your module) ---
+// (you already have initializeApp, getDatabase, set, update, get, onValue etc.)
+
+// --- Utility: build message object ---
+function buildMessageObject({ fromUid, fromName, toType, toId, text, gameName = null, tableId = null }) {
+  return {
+    fromUid,
+    fromName,
+    toType,          // "user" | "broadcast" | "table"
+    toId,
+    gameName,
+    tableId,
+    text,
+    createdAt: Date.now()
+  };
+}
+
+// --- Send message (modeled for the 3 types) ---
+async function sendMessage(senderUid, senderName, mode, target, messageText, gameName = null, tableId = null) {
+  const now = Date.now();
+
+  // ✅ Create base message object
+  const msg = {
+    fromUid: senderUid,
+    fromName: senderName,
+    text: messageText,
+    toType: mode, // 'user' | 'broadcast' | 'table'
+    toId: target,
+    gameName,
+    tableId,
+    createdAt: now,
+    delivered: false,
+    read: false,
+    deliveryTime: null,
+    readTime: null
+  };
+
+  let refPath;
+
+  // ✅ Mode Routing
+  if (mode === "user") {
+    // direct message to single receiver
+    refPath = `messages/direct/${target}`;
+  } else if (mode === "broadcast") {
+    // global chat visible to all online
+    refPath = `messages/broadcast`;
+  } else if (mode === "table") {
+    // message inside game table
+    refPath = `messages/tables/${gameName}/${tableId}`;
+  } else {
+    console.error("❌ Unknown message mode:", mode);
+    return;
+  }
+
+  const msgRef = push(ref(db, refPath));
+  await set(msgRef, msg);
+
+  console.log(`✅ Message sent (${mode}):`, msg);
+}
+///
+//import { ref, onChildAdded, update } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+
+function listenDirectMessages(uid) {
+  const inboxRef = ref(db, `messages/direct/${uid}`);
+
+  onChildAdded(inboxRef, async (snap) => {
+    const msg = snap.val();
+    if (!msg) return;
+
+    console.log("📩 New message received:", msg);
+
+    // Show popup only for new, unread messages
+    if (!msg.read) {
+      showPopupMessage(msg);
+
+      // Mark as delivered + read
+      await update(snap.ref, {
+        delivered: true,
+        deliveryTime: Date.now(),
+        read: true,
+        readTime: Date.now()
+      });
+    }
+  });
+}
+
+
+function listenBroadcastMessages() {
+  const refBroadcast = ref(db, "messages/broadcast");
+  onChildAdded(refBroadcast, (snap) => {
+    const msg = snap.val();
+    if (!msg) return;
+    showPopupMessage({
+      ...msg,
+      fromName: `${msg.fromName} (Broadcast)`
+    });
+  });
+}
+
+function listenTableMessages(gameName, tableId) {
+  const refTable = ref(db, `messages/tables/${gameName}/${tableId}`);
+  window.tableListener = onChildAdded(refTable, (snap) => {
+    const msg = snap.val();
+    appendToTableChatUI(msg); // render chat bubble under table area
+  });
+}
+
+
+///
+
+// --- Listening: attach listeners for a given current user & their active tables ---
+// This subscribes to direct messages to `myUid`, broadcast, and any table paths in `activeTables`
+function attachMessageListeners(myUid, onMessageCallback, activeTables = []) {
+  // direct messages to me
+  const directRef = dbRef(db, `messages/direct/${myUid}`);
+  onChildAdded(directRef, (snap) => {
+    const m = snap.val();
+    onMessageCallback({ path: `direct/${myUid}`, msg: m, key: snap.key });
+  });
+
+  // broadcast messages
+  const broadcastRef = dbRef(db, `messages/broadcast`);
+  onChildAdded(broadcastRef, (snap) => {
+    const m = snap.val();
+    onMessageCallback({ path: `broadcast`, msg: m, key: snap.key });
+  });
+
+  // table messages (subscribe to each active table)
+  activeTables.forEach(({ gameName, tableId }) => {
+    const tableRef = dbRef(db, `messages/table/${gameName}/${tableId}`);
+    onChildAdded(tableRef, (snap) => {
+      const m = snap.val();
+      onMessageCallback({ path: `table/${gameName}/${tableId}`, msg: m, key: snap.key });
+    });
+  });
+}
+///
+// 🧲 Make the chat window draggable by its header
+function makeChatDraggable(win) {
+  const header = win.querySelector(".chatHeader");
+  if (!header) return;
+  let offsetX = 0, offsetY = 0, dragging = false;
+
+  header.addEventListener("mousedown", (e) => {
+    dragging = true;
+    offsetX = e.clientX - win.offsetLeft;
+    offsetY = e.clientY - win.offsetTop;
+    document.body.style.userSelect = "none";
+  });
+
+  document.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    win.style.left = e.clientX - offsetX + "px";
+    win.style.top  = e.clientY - offsetY + "px";
+    win.style.right = "auto";
+  });
+
+  document.addEventListener("mouseup", () => {
+    dragging = false;
+    document.body.style.userSelect = "auto";
+  });
+}
+
+// 🔀 Reposition all open chat windows after one closes
+// 🔀 Reposition all open chat windows after one closes
+function repositionChatWindows() {
+  let i = 0;
+  for (const uid in openChatWindows) {
+    const win = openChatWindows[uid];
+    if (!win) continue;
+    win.style.top = `${i * 35}px`;
+    win.style.left = "0px";
+    i++;
+  }
+}
+///
+
+// Handle direct message buttons
+function attachMessageHandlers() {
+  document.querySelectorAll(".msgBtn").forEach((btn) => {
+    btn.onclick = async () => {
+      const uid = btn.dataset.uid;
+      const currentUser = JSON.parse(localStorage.getItem("loggedUser"));
+      if (!currentUser) return;
+
+      const userSnap = await get(ref(db, `users/${uid}`));
+      if (!userSnap.exists()) return;
+      const partner = userSnap.val();
+
+      // ✅ just open floating window
+      showChatWindow(uid, partner.userName, currentUser);
+    };
+  });
+}
+
+///
+function listenForIncomingMessages(uid) {
+ // 🧠 Avoid double attaching listener for same user
+  if (activeListenerUid === uid) {
+    console.log("⚠️ Listener already active for", uid);
+    return;
+  }
+  activeListenerUid = uid;
+  
+  const inboxRef = ref(db, `messages/direct/${uid}`);
+
+  onChildAdded(inboxRef, async (snap) => {
+    const msg = snap.val();
+    if (!msg) return;
+
+    const currentUser = JSON.parse(localStorage.getItem("loggedUser"));
+    if (!currentUser) return;
+
+    //  messages you sent yourself
+    if (msg.fromUid === currentUser.uid) return;
+
+    // gnore messages that are already marked read (old history)
+    if (msg.read) return;
+
+// Open or reuse top-right floating chat window
+if (!openChatWindows[msg.fromUid]) {
+  showChatWindow(msg.fromUid, msg.fromName, currentUser);
+}
+appendChatMessageTo(msg.fromUid, "left", msg.text);
+
+    // Mark delivered + read
+    await update(snap.ref, {
+      delivered: true,
+      deliveryTime: Date.now(),
+      read: true,
+      readTime: Date.now()
+    });
+  });
+}
+
+function appendChatMessageTo(uid, side, text) {
+  const msgBox = document.getElementById(`chatMessages-${uid}`);
+  if (!msgBox) return;
+  const div = document.createElement("div");
+  div.className = `chat-bubble chat-${side}`;
+  div.textContent = text;
+  msgBox.appendChild(div);
+  msgBox.scrollTop = msgBox.scrollHeight;
+}
+
+
+// ✅ 👇 Place this block right here 👇
+const savedUser = JSON.parse(localStorage.getItem("loggedUser"));
+if (savedUser && savedUser.uid) {
+  console.log("🔄 Reattaching live message listener for:", savedUser.userName);
+  listenForIncomingMessages(savedUser.uid);
+  registerOnlineStatus(savedUser.uid);
+}
+
+let activeChatUid = null;
+let activeChatName = null;
+
+function showPopupMessage(msg) {
+  activeChatUid = msg.fromUid;
+  activeChatName = msg.fromName;
+
+  const chat = document.getElementById("chatWindow");
+  const title = document.getElementById("chatTitle");
+  const currentUser = JSON.parse(localStorage.getItem("loggedUser"));
+
+  title.textContent = `${currentUser.userName} ↔ ${msg.fromName}`;
+  chat.style.display = "flex";
+
+  appendChatMessage("left", msg.text);
+}
+///
+// 💬 Add chat bubble to a window (left/right)
+// 💬 Add chat bubble to a window (left/right)
+function appendChatBubble(uid, side, text) {
+  const msgBox = document.querySelector(`#chatMessages-${uid}`);
+  if (!msgBox) return; // window might be closed or not open yet
+
+  const bubble = document.createElement("div");
+  bubble.className = `chat-bubble chat-${side}`;
+  bubble.textContent = text;
+
+  // Apply modern bubble styles matching #chatWindow design
+  Object.assign(bubble.style, {
+    padding: "8px 12px",
+    borderRadius: "14px",
+    maxWidth: "100%",
+    wordWrap: "break-word",
+    fontSize: "0.89rem",
+    lineHeight: "1.25rem",
+    color: "#fff",
+    display: "inline-flex",
+    alignSelf: side === "right" ? "flex-end" : "flex-start",
+    background: side === "right" ? "rgba(255,255,255,0.08)" : "rgba(0,128,0,0.3)"
+  });
+
+  msgBox.appendChild(bubble);
+  msgBox.scrollTop = msgBox.scrollHeight;
+}
+
+///
+function appendChatMessage(side, text) {
+  const messages = document.getElementById("chatMessages");
+  const div = document.createElement("div");
+  div.className = `chat-bubble chat-${side}`;
+  div.textContent = text;
+  messages.appendChild(div);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+async function sendChatMessage(targetUid, targetName, currentUser, input) {
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+
+  // append right bubble
+  appendChatBubble(targetUid, "right", text);
+
+  // store message in Firebase
+  await sendMessage(currentUser.uid, currentUser.userName, "user", targetUid, text);
+}
+
+
+///
+    const resultBox = document.getElementById("result");
+    const logoutBtn = document.getElementById("logoutBtn");
+    const loginForm = document.getElementById("loginForm");
+    const registerForm = document.getElementById("registerForm");
+
+    loginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = document.getElementById("loginEmail").value.trim();
+      const pass = document.getElementById("loginPassword").value;
+      try {
+        const user = await loginUser(email, pass);
+        resultBox.innerHTML = `<p style="color:lime;">Login success!</p>
+          <pre>${JSON.stringify(user, null, 2)}</pre>`;
+        logoutBtn.style.display = "inline-block";
+        watchUsers();
+      } catch (err) {
+        resultBox.innerHTML = `<p style="color:red;">${err.message}</p>`;
+      }
+    });
+
+    registerForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = document.getElementById("regName").value.trim();
+      const email = document.getElementById("regEmail").value.trim();
+      const pass = document.getElementById("regPassword").value;
+      try {
+        const reg = await registerUser(name, email, pass);
+        resultBox.innerHTML = `<p style="color:lime;">Registered UID: ${reg.uid}</p>`;
+        const loggedIn = await loginUser(email, pass);
+        resultBox.innerHTML += `<pre>${JSON.stringify(loggedIn, null, 2)}</pre>`;
+        logoutBtn.style.display = "inline-block";
+        watchUsers();
+      } catch (err) {
+        resultBox.innerHTML = `<p style="color:red;">${err.message}</p>`;
+      }
+    });
+	
+// --- PASSWORD MATCH CHECK ---
+const regPass1 = document.getElementById("regPassword");
+const regPass2 = document.getElementById("regPassword2");
+const pwMatchIcon = document.getElementById("pwMatchIcon");
+const registerBtn = document.getElementById("registerBtn");
+
+function checkPasswordMatch() {
+  if (regPass2.value.length === 0) {
+    pwMatchIcon.style.display = "none";
+    registerBtn.disabled = true;
+    return;
+  }
+
+  if (regPass1.value === regPass2.value) {
+    pwMatchIcon.style.display = "inline";
+    pwMatchIcon.textContent = "✔";
+    pwMatchIcon.classList.remove("mismatch");
+    pwMatchIcon.classList.add("match");
+    registerBtn.disabled = false;
+  } else {
+    pwMatchIcon.style.display = "inline";
+    pwMatchIcon.textContent = "✖";
+    pwMatchIcon.classList.remove("match");
+    pwMatchIcon.classList.add("mismatch");
+    registerBtn.disabled = true;
+  }
+}
+
+regPass1.addEventListener("input", checkPasswordMatch);
+regPass2.addEventListener("input", checkPasswordMatch);
+
+///
+///
+
+    // TAB SWITCHING
+    const tabLogin = document.getElementById("tabLogin");
+    const tabRegister = document.getElementById("tabRegister");
+    tabLogin.addEventListener("click", () => {
+      tabLogin.classList.add("active");
+      tabRegister.classList.remove("active");
+      loginForm.classList.add("active");
+      registerForm.classList.remove("active");
+    });
+    tabRegister.addEventListener("click", () => {
+      tabRegister.classList.add("active");
+      tabLogin.classList.remove("active");
+      registerForm.classList.add("active");
+      loginForm.classList.remove("active");
+    });
+	
+	
+logoutBtn.addEventListener("click", async () => {
+  try {
+    const currentUser = JSON.parse(localStorage.getItem("loggedUser"));
+    if (currentUser && currentUser.uid) {
+      // 🔴 Mark offline immediately
+      await update(ref(db, `users/${currentUser.uid}`), {
+        isOnline: false,
+        lastLogoutAt: Date.now()
+      });
+    }
+
+    // 🧹 1️⃣ Remove all listeners & guards
+    activeListenerUid = null;
+    messageListenerActive = false;
+
+    // Firebase doesn’t have a global "remove all listeners" function for onChildAdded
+    // but you can safely reload the page or explicitly detach them if you keep their ref
+    // Example:
+    // off(ref(db, `messages/direct/${currentUser.uid}`));
+
+	
+Object.values(openChatWindows).forEach(w => w.remove());
+for (const k in openChatWindows) delete openChatWindows[k];
+
+
+    // 🧹 3️⃣ Hide user list / table if visible
+    document.getElementById("userTable").style.display = "none";
+
+    // 🧹 4️⃣ Clear all session data
+    localStorage.removeItem("loggedUser");
+
+    // 🧹 5️⃣ Reset forms and show login/register again
+    loginForm.reset();
+    registerForm.reset();
+    loginForm.classList.add("active");
+    registerForm.classList.remove("active");
+
+    // 🧹 6️⃣ Feedback
+    alert("👋 Logged out successfully.");
+  } catch (err) {
+    console.error("❌ Logout failed:", err);
+  }
+});
+
+async function adminBatchOverride(uid, changes) {
+  try {
+    const userRef = ref(db, `users/${uid}`);
+    await update(userRef, changes);
+    console.log("✅ Admin batch update:", changes);
+    alert(`✅ Updated user ${uid} with: ${JSON.stringify(changes)}`);
+  } catch (err) {
+    console.error("❌ Batch update failed:", err);
+  }
+}
+  // ✅ Call it after everything is defined and initialized
+ // adminBatchOverride("-Od44Qs83-1uFcegOXeX", { userRole: "1" });
+ 
+ ///
+function registerOnlineStatus(uid) {
+  const userStatusRef = ref(db, `users/${uid}/isOnline`);
+  const connectedRef = ref(db, ".info/connected");
+
+  const IDLE_TIMEOUT = 30 * 60 * 1000; // 15 minutes
+  let idleTimer;
+
+  function setOnline() {
+    set(userStatusRef, true);
+    resetIdleTimer();
+  }
+
+  function setOffline() {
+    set(userStatusRef, false);
+  }
+
+  function resetIdleTimer() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(setOffline, IDLE_TIMEOUT);
+  }
+
+  // mark offline when connection lost
+  onValue(connectedRef, (snap) => {
+    if (snap.val() === false) return;
+    onDisconnect(userStatusRef).set(false);
+    setOnline();
+  });
+
+  // user activity resets idle timer
+  ["mousemove", "keydown", "click"].forEach(evt => {
+    window.addEventListener(evt, resetIdleTimer);
+  });
+}
+
+ ///
+ 
+ let openChatWindows = {};
+/* ---------------------------
+   🧩 FLOATING CHAT WINDOWS
+---------------------------- */
+//let openChatWindows = {};
+
+// 🪟 Create and show chat window
+// 🪟 Create and show chat window
+function showChatWindow(senderUid, senderName, currentUser) {
+  // already open? bring to front
+  if (openChatWindows[senderUid]) {
+    const win = openChatWindows[senderUid];
+    win.style.zIndex = 10000 + Object.keys(openChatWindows).length;
+    win.style.display = "flex";
+    return win;
+  }
+
+  const container = document.getElementById("chatContainer") || document.body;
+  const chatWin = document.createElement("div");
+  chatWin.className = "chatWindow";
+  chatWin.id = `chat-${senderUid}`;
+
+  const offset = Object.keys(openChatWindows).length * 35;
+
+  // Apply all inline styles matching #chatWindow design
+  Object.assign(chatWin.style, {
+    position: "fixed",
+    left: "0px",
+    top: `${offset}px`,
+    width: "340px",
+    height: "285px",
+    background: "rgba(25,25,25,0.72)",
+    backdropFilter: "blur(12px) saturate(180%)",
+    borderRadius: "18px",
+    boxShadow: "0 10px 32px rgba(0,0,0,0.45)",
+    display: "flex",
+    flexDirection: "column",
+    zIndex: 9999 + Object.keys(openChatWindows).length,
+    fontFamily: '"Inter", system-ui, sans-serif'
+  });
+
+  chatWin.innerHTML = `
+    <div class="chatHeader" style="
+      background: transparent;
+      height: 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 14px;
+      color: #fff;
+      font-weight: 600;
+      font-size: 0.95rem;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      cursor: move;
+    ">
+      <span class="chatTitle">${currentUser.userName} ↔ ${senderName}</span>
+      <button class="chatClose" style="
+        background: none;
+        border: none;
+        color: #fff;
+        cursor: pointer;
+        font-size: 1.1rem;
+        opacity: 0.7;
+        transition: 0.2s;
+      ">✖</button>
+    </div>
+    <div class="chatMessages" id="chatMessages-${senderUid}" style="
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(0,0,0,0.4) transparent;
+    "></div>
+    <div class="chatInputArea" style="
+      display: flex;
+      background: rgba(255,255,255,0.06);
+      border-top: 1px solid rgba(255,255,255,0.06);
+      align-items: center;
+      padding: 8px;
+      border-radius: 0 0 18px 18px;
+    ">
+      <input type="text" id="msgInput-${senderUid}" placeholder="Type a message..." style="
+        flex: 1;
+        background: rgba(0,0,0,0.15);
+        border-radius: 12px;
+        border: none;
+        color: white;
+        padding: 8px 10px;
+        outline: none;
+        font-size: 0.88rem;
+      ">
+      <button class="sendBtn" data-uid="${senderUid}" style="
+        margin-left: 8px;
+        background: #4a86ff;
+        color: #fff;
+        border: none;
+        padding: 8px 14px;
+        cursor: pointer;
+        border-radius: 12px;
+        font-weight: 600;
+        transition: 0.2s;
+      ">Send</button>
+    </div>
+  `;
+
+  container.appendChild(chatWin);
+  openChatWindows[senderUid] = chatWin;
+
+  // close button with hover effect
+  const closeBtn = chatWin.querySelector(".chatClose");
+  closeBtn.addEventListener("mouseenter", () => closeBtn.style.opacity = "1");
+  closeBtn.addEventListener("mouseleave", () => closeBtn.style.opacity = "0.7");
+  closeBtn.addEventListener("click", () => {
+    chatWin.remove();
+    delete openChatWindows[senderUid];
+    repositionChatWindows();
+  });
+
+  // send button hover effect
+  const sendBtn = chatWin.querySelector(".sendBtn");
+  sendBtn.addEventListener("mouseenter", () => sendBtn.style.opacity = "0.85");
+  sendBtn.addEventListener("mouseleave", () => sendBtn.style.opacity = "1");
+
+  // send + enter key
+  const msgInput = chatWin.querySelector(`#msgInput-${senderUid}`);
+  sendBtn.addEventListener("click", () => sendChatMessage(senderUid, senderName, currentUser, msgInput));
+  msgInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") sendChatMessage(senderUid, senderName, currentUser, msgInput);
+  });
+
+  makeChatDraggable(chatWin);
+
+  return chatWin;
+}
+  </script>
+  <script>
+  </script>
+<div id="chatContainer" style="position:fixed;top:0;right:0;z-index:9999;"></div>
+
+<template id="chat-template">
+  <div class="chatWindow">
+    <div class="chatHeader">
+      <span class="chatTitle"></span>
+      <button class="chatClose">✖</button>
+    </div>
+    <div class="chatMessages"></div>
+    <div class="chatInput">
+      <input type="text" placeholder="Type a message...">
+      <button class="sendBtn">Send</button>
+    </div>
+  </div>
+</template>
+
+
+</body>
+</html>
