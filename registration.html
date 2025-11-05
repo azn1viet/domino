@@ -452,8 +452,17 @@
 <script src="https://cdn.jsdelivr.net/npm/js-sha256@0.11.0/build/sha256.min.js"></script>
   <!-- Firebase + Logic -->
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
-    import {
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
+
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+
+import {
   getDatabase,
   ref,
   ref as dbRef,
@@ -464,10 +473,8 @@
   onValue,
   onChildAdded,
   onDisconnect
-    } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
-   // import { push, ref as dbRef, get, onChildAdded } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
-  //  import { ref as dbRef, onDisconnect, set } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
-  //  import { get, child } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+} from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+
 let activeListenerUid = null; // tracks which UID currently has an active message listener
 let messageListenerActive = false;
 
@@ -483,190 +490,118 @@ let messageListenerActive = false;
       measurementId: "G-0Z50D58FWJ"
     };
 
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
+// --- Initialize Firebase ---
+const app = initializeApp(firebaseConfig);
+
+// --- Initialize Firebase Authentication ---
+const auth = getAuth(app);
+
+// --- Initialize Realtime Database ---
+const db = getDatabase(app);
+
+	
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    console.log("✅ Auth restored:", user.email);
+    const uid = user.uid;
+    registerOnlineStatus(uid);
+    listenForIncomingMessages(uid);
+    watchUsers();
+  } else {
+    console.log("👋 No user logged in.");
+  }
+});
+
+
 
 async function registerUser(userName, userEmail, userPassword) {
-  const passwordHash = sha256(userPassword);
-
-  // 1️⃣ Get existing users
-  const usersRef = ref(db, "users");
-  const snapshot = await get(usersRef);
-
-  if (snapshot.exists()) {
-    const users = snapshot.val();
-
-    // 2️⃣ Check if email already exists (case-insensitive)
-    const emailExists = Object.values(users).some(
-      (u) => u.userEmail.toLowerCase() === userEmail.toLowerCase()
-    );
-
-    if (emailExists) {
-	 document.getElementById("result").style.display = "block";
-      throw new Error(
-        "⚠️ This email is already registered. Please log in or <a href='mailto:azn1viet@gmail.com?subject=ForgotPassword'>contact Admin</a>"
-      );
-    }
-  }
-
-  // 3️⃣ Proceed if unique
-  const newUserRef = push(usersRef);
-  const uid = newUserRef.key;
-
-  const profile = {
-    uid,
-    userName,
-    userEmail,
-    userStatus: "1",
-    userRole: "0",
-    createdAt: Date.now(),
-  };
-
-  const auth = {
-    passwordHash,
-    lastLogin: null,
-  };
-
-  // 4️⃣ Write to both users and auth
-  await set(newUserRef, profile);
-  await set(ref(db, `auth/${uid}`), auth);
-
-  return { uid, profile };
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, userEmail, userPassword);
+    const uid = cred.user.uid;
+	
+	if (!snapCheck.exists()) {
+  // nếu chưa có profile thì không update + không show user list
+  // hoặc auto generate profile default minimal (optional)
+  return;
 }
+await update(userRef, {
+  isOnline: true,
+  currentLoginAt: now,
+  lastLoginAt: now
+});
+
+    const profile = {
+      uid,
+      userName,
+      userEmail,
+      userStatus: "1",
+      userRole: "0",
+      createdAt: Date.now(),
+      isOnline: false
+    };
+
+    await set(ref(db, `users/${uid}`), profile);
+    console.log("REGISTER OK:", profile);
+
+    alert("✅ Registered. Now login.");
+
+  } catch (err) {
+    console.error("REGISTER ERROR:", err);
+    alert(err.message);
+  }
+}
+
 
 async function loginUser(userEmail, userPassword) {
   try {
-    const hashed = sha256(userPassword);
+    const cred = await signInWithEmailAndPassword(auth, userEmail, userPassword);
+    const user = cred.user;
+    const uid = user.uid;
 
-    // 1️⃣ Get all users
-    const usersRef = ref(db, "users");
-    const usersSnap = await get(usersRef);
-    if (!usersSnap.exists()) {
-      alert("⚠️ No users found in database.");
-      return;
-    }
-    const users = usersSnap.val();
+    const now = Date.now();
+    await update(ref(db, "users/" + uid), {
+      isOnline: true,
+      currentLoginAt: now,
+      lastLoginAt: now
+    });
 
-    // 2️⃣ Find user by email
-    let foundUser = null;
-    for (const uid in users) {
-      const u = users[uid];
-      if (u.userEmail === userEmail) {
-        foundUser = { uid, ...u };
-        break;
-      }
-    }
+    const snap = await get(ref(db, "users/" + uid));
+    const userData = snap.exists() ? snap.val() : {};
 
-    if (!foundUser) {
-      alert("❌ Email not registered.");
-      return;
-    }
+    const session = { ...userData, emailVerified: user.emailVerified };
 
-    // 3️⃣ Get password hash from /auth/{uid}
-    const authRef = ref(db, `auth/${foundUser.uid}`);
-    const authSnap = await get(authRef);
+    localStorage.setItem("loggedUser", JSON.stringify(session));
+    
+	//console.log("USERDATA SNAP:", userData);
+	
+	//const snap = await get(ref(db, "users"));
+    console.log("DEBUG USERS ROOT:", snap.val());
 
-    if (!authSnap.exists()) {
-      alert("⚠️ No auth record found for this user.");
-      return;
-    }
-
-    const authData = authSnap.val();
-
-    if (authData.passwordHash !== hashed) {
-      alert("❌ Invalid password.");
-      return;
-    }
-
-// 4️⃣ Success → safely overwrite auth info permanently
-const now = Date.now();
-
-// Read current auth data once more to preserve unknown fields
-const authSnapshot = await get(authRef);
-const oldAuth = authSnapshot.exists() ? authSnapshot.val() : {};
-
-const newAuthData = {
-  // Keep the password hash & any old unknown fields
-  ...oldAuth,
-
-  // Always enforce the known permanent structure
-  passwordHash: oldAuth.passwordHash || authData.passwordHash,
-  lastLoginAt: oldAuth.currentLoginAt || now,
-  currentLoginAt: now,
-  loginCount: (oldAuth.loginCount || 0) + 1
-};
-
-// Overwrite /auth/{uid} with the safe, merged object
-await set(authRef, newAuthData);
-
-// 5️⃣ Build merged user session object
-const userSession = {
-  ...foundUser,
-  ...newAuthData
-};
-
-console.log("✅ Login success!", userSession);
-localStorage.setItem("loggedUser", JSON.stringify(userSession));
-
-alert(`✅ Welcome back, ${foundUser.userName}!`);
+    alert(`✅ Welcome back, ${session.userName}!`);	
 
 
-// Hide the forms and show user info + table
-document.getElementById("loginDiv").style.display = "none";
-document.getElementById("result").style.display = "block";
+    document.getElementById("loginDiv").style.display = "none";
+    document.getElementById("result").style.display = "block";
+    document.getElementById("logoutBtn").style.display = "inline-block";
+    document.getElementById("userTable").style.display = "table";
 
-const resultBox = document.getElementById("result");
-resultBox.innerHTML = `
-  <p style="color:lime;">✅ Welcome back, <b>${foundUser.userName}</b>!</p>
-  <pre>${JSON.stringify(userSession, null, 2)}</pre>
-`;
+    document.getElementById("result").innerHTML = `
+      <p style="color:lime;">✅ Logged in as <b>${session.userName}</b></p>
+      <pre>${JSON.stringify(session, null, 2)}</pre>
+    `;
 
-document.getElementById("logoutBtn").style.display = "inline-block";
-document.getElementById("userTable").style.display = "table";
+    watchUsers();
+    registerOnlineStatus(uid);
+    listenForIncomingMessages(uid);
 
-
-
-// Start watching all users
-watchUsers();
-
-// ✅ Add real-time presence + unread message handlers
-registerOnlineStatus(foundUser.uid);
-await showUnreadOnLogin(foundUser.uid); // show offline messages as popups
-listenForIncomingMessages(foundUser.uid); // listen to new ones live
-
-// Optionally: broadcast listener only when online
-if (foundUser.userStatus === "1") {
-  listenBroadcastMessages();
-}
-
-return userSession;
-
-
+    return session;
   } catch (err) {
-    console.error("🔥 Login error:", err);
-    alert("⚠️ Login failed. Check console for details.");
+    alert(`❌ Login failed: ${err.message}`);
   }
-   /// 
-  // After login success:
-/*registerOnlineStatus(foundUser.uid);
-listenForIncomingMessages(foundUser.uid);
-showUnreadOnLogin(foundUser.uid);
-listenDirectMessages(foundUser.uid);
- // Only attach broadcast listener while online (optional)
-  if (user.userStatus === "1") {
-    listenBroadcastMessages();
-  }
-// Once online, mark any undelivered messages as delivered
-const myInboxRef = dbRef(db, `messages/direct/${foundUser.uid}`);
-onChildAdded(myInboxRef, (snap) => {
-  const msg = snap.val();
-  if (!msg.delivered) {
-    update(snap.ref, { delivered: true, deliveryTime: Date.now() });
-  }
-});*/
-///
-  
 }
+
+
+
 ///
 function onJoinTable(gameName, tableId) {
   listenTableMessages(gameName, tableId);
@@ -701,35 +636,33 @@ async function showUnreadOnLogin(uid) {
 async function watchUsers() {
   const db = getDatabase();
   const usersRef = ref(db, "users");
-  const authRef = ref(db, "auth");
   const table = document.getElementById("userTable");
   const tbody = table.querySelector("tbody");
 
-  onValue(usersRef, async (snapshot) => {
+  onValue(usersRef, (snapshot) => {
     const users = snapshot.val() || {};
-    const authSnap = await get(authRef);
-    const authData = authSnap.exists() ? authSnap.val() : {};
-
     const now = Date.now();
     tbody.innerHTML = "";
 
     Object.keys(users).forEach((uid) => {
       const u = users[uid];
-      const a = authData[uid] || {};
-      const lastLoginAt = a.currentLoginAt || 0;
-      const diffMin = Math.floor((now - lastLoginAt) / 60000);
-      const online = diffMin < 5;
+	  
 
-      // --- main user row ---
+  if(!u.userName) return;  // skip node rác
+
+      const lastLoginAt = u.lastLoginAt || 0;
+      const diffMin = Math.floor((now - lastLoginAt) / 60000);
+      const online = u.isOnline === true; // dùng flag realtime thay vì diff
+
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td style="color:lime; font-weight:bold;">${u.userName}</td>
-        <td>${u.userRole === "1" ? "👑 Admin" : "👤 User"}</td>
+        <td style="color:lime; font-weight:bold;">${u.userName || "(no name)"}</td>
+        <td>${u.userRole == "1" ? "👑 Admin" : "👤 User"}</td>
         <td>
           ${
             online
-              ? `<span style="color:lime;">●</span> Online ${diffMin === 0 ? "now" : diffMin + "m ago"}`
-              : `<span style="color:gray;">●</span> Offline`
+              ? `<span style="color:lime;">●</span> Online`
+              : `<span style="color:gray;">●</span> Offline (${diffMin}m ago)`
           }
         </td>
         <td>
@@ -737,7 +670,6 @@ async function watchUsers() {
         </td>
       `;
 
-      // --- hidden chat row ---
       const chatRow = document.createElement("tr");
       chatRow.classList.add("chatRow");
       chatRow.style.display = "none";
@@ -757,13 +689,11 @@ async function watchUsers() {
       tbody.appendChild(chatRow);
     });
 
-    table.style.display = "table";
-
-    // ✅ Attach handlers every time the table updates
+    table.style.display = "table";	
     attachMessageHandlers();
-  });
+	//console.log("WATCH USERS SNAPSHOT:", users);
 
-  
+  });
 }
 
 
@@ -1181,47 +1111,33 @@ regPass2.addEventListener("input", checkPasswordMatch);
 	
 logoutBtn.addEventListener("click", async () => {
   try {
-    const currentUser = JSON.parse(localStorage.getItem("loggedUser"));
-    if (currentUser && currentUser.uid) {
-      // 🔴 Mark offline immediately
-      await update(ref(db, `users/${currentUser.uid}`), {
+    const user = auth.currentUser;
+    if (user) {
+      await update(ref(db, `users/${user.uid}`), {
         isOnline: false,
         lastLogoutAt: Date.now()
       });
     }
 
-    // 🧹 1️⃣ Remove all listeners & guards
-    activeListenerUid = null;
-    messageListenerActive = false;
-
-    // Firebase doesn’t have a global "remove all listeners" function for onChildAdded
-    // but you can safely reload the page or explicitly detach them if you keep their ref
-    // Example:
-    // off(ref(db, `messages/direct/${currentUser.uid}`));
-
-	
-Object.values(openChatWindows).forEach(w => w.remove());
-for (const k in openChatWindows) delete openChatWindows[k];
-
-
-    // 🧹 3️⃣ Hide user list / table if visible
-    document.getElementById("userTable").style.display = "none";
-
-    // 🧹 4️⃣ Clear all session data
+    await signOut(auth);
     localStorage.removeItem("loggedUser");
 
-    // 🧹 5️⃣ Reset forms and show login/register again
+    Object.values(openChatWindows).forEach(w => w.remove());
+    openChatWindows = {};
+
+    document.getElementById("userTable").style.display = "none";
+    document.getElementById("loginDiv").style.display = "block";
+    document.getElementById("result").style.display = "none";
+    document.getElementById("logoutBtn").style.display = "none";
     loginForm.reset();
     registerForm.reset();
-    loginForm.classList.add("active");
-    registerForm.classList.remove("active");
 
-    // 🧹 6️⃣ Feedback
     alert("👋 Logged out successfully.");
   } catch (err) {
     console.error("❌ Logout failed:", err);
   }
 });
+
 
 async function adminBatchOverride(uid, changes) {
   try {
@@ -1241,17 +1157,23 @@ function registerOnlineStatus(uid) {
   const userStatusRef = ref(db, `users/${uid}/isOnline`);
   const connectedRef = ref(db, ".info/connected");
 
-  const IDLE_TIMEOUT = 30 * 60 * 1000; // 15 minutes
+  const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes
   let idleTimer;
 
-  function setOnline() {
-    set(userStatusRef, true);
-    resetIdleTimer();
-  }
+function setOnline() {
+  update(userStatusRef.parent, { 
+    isOnline: true, 
+    lastLoginAt: Date.now()
+  });
+  resetIdleTimer();
+}
 
-  function setOffline() {
-    set(userStatusRef, false);
-  }
+function setOffline() {
+  update(userStatusRef.parent, { 
+    isOnline: false,
+    lastLogoutAt: Date.now()
+  });
+}
 
   function resetIdleTimer() {
     clearTimeout(idleTimer);
