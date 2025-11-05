@@ -915,7 +915,7 @@ function makeChatDraggable(win) {
     win.style.top  = touch.clientY - offsetY + "px";
     win.style.right = "auto";
     win.style.bottom = "auto";
-  }, { passive: false }); // Important: allows preventDefault()
+  }, { passive: false });
 
   document.addEventListener("touchend", () => {
     dragging = false;
@@ -1322,7 +1322,6 @@ function setOffline() {
 /* ---------------------------
    🧩 FLOATING CHAT WINDOWS
 ---------------------------- */
-// 🪟 Create and show chat window
 function showChatWindow(senderUid, senderName, currentUser) {
   // already open? bring to front
   if (openChatWindows[senderUid]) {
@@ -1339,13 +1338,15 @@ function showChatWindow(senderUid, senderName, currentUser) {
 
   const offset = Object.keys(openChatWindows).length * 35;
 
-  // Apply all inline styles matching #chatWindow design
+  // Apply all inline styles - NOW WITH RESIZE!
   Object.assign(chatWin.style, {
     position: "fixed",
     left: "0px",
     top: `${offset}px`,
     width: "340px",
     height: "285px",
+    minWidth: "280px",
+    minHeight: "200px",
     background: "rgba(25,25,25,0.72)",
     backdropFilter: "blur(12px) saturate(180%)",
     borderRadius: "18px",
@@ -1353,7 +1354,9 @@ function showChatWindow(senderUid, senderName, currentUser) {
     display: "flex",
     flexDirection: "column",
     zIndex: 9999 + Object.keys(openChatWindows).length,
-    fontFamily: '"Inter", system-ui, sans-serif'
+    fontFamily: '"Inter", system-ui, sans-serif',
+    resize: "both",
+    overflow: "hidden"
   });
 
   chatWin.innerHTML = `
@@ -1369,6 +1372,7 @@ function showChatWindow(senderUid, senderName, currentUser) {
       font-size: 0.95rem;
       border-bottom: 1px solid rgba(255,255,255,0.05);
       cursor: move;
+      flex-shrink: 0;
     ">
       <span class="chatTitle">${currentUser.userName} ↔ ${senderName}</span>
       <button class="chatClose" style="
@@ -1390,35 +1394,40 @@ function showChatWindow(senderUid, senderName, currentUser) {
       gap: 6px;
       scrollbar-width: thin;
       scrollbar-color: rgba(0,0,0,0.4) transparent;
+      min-height: 0;
     "></div>
     <div class="chatInputArea" style="
       display: flex;
       background: rgba(255,255,255,0.06);
       border-top: 1px solid rgba(255,255,255,0.06);
-      align-items: center;
+      align-items: stretch;
       padding: 8px;
       border-radius: 0 0 18px 18px;
+      flex-shrink: 0;
+      gap: 0;
     ">
       <input type="text" id="msgInput-${senderUid}" placeholder="Type a message..." style="
         flex: 1;
-        background: rgba(0,0,0,0.15);
-        border-radius: 12px;
-        border: none;
+        background: rgba(0,0,0,0.25);
+        border-radius: 12px 0 0 12px;
+        border: 1px solid rgba(255,255,255,0.1);
+        border-right: none;
         color: white;
-        padding: 8px 10px;
+        padding: 10px 12px;
         outline: none;
         font-size: 0.88rem;
       ">
       <button class="sendBtn" data-uid="${senderUid}" style="
-        margin-left: 8px;
         background: #4a86ff;
         color: #fff;
-        border: none;
-        padding: 8px 14px;
+        border: 1px solid rgba(255,255,255,0.1);
+        border-left: none;
+        padding: 10px 16px;
         cursor: pointer;
-        border-radius: 12px;
+        border-radius: 0 12px 12px 0;
         font-weight: 600;
         transition: 0.2s;
+        white-space: nowrap;
       ">Send</button>
     </div>
   `;
@@ -1441,37 +1450,32 @@ function showChatWindow(senderUid, senderName, currentUser) {
   sendBtn.addEventListener("mouseenter", () => sendBtn.style.opacity = "0.85");
   sendBtn.addEventListener("mouseleave", () => sendBtn.style.opacity = "1");
 
-// send + enter key - using NEW sendDirectMessage function
-const msgInput = chatWin.querySelector(`#msgInput-${senderUid}`);
-sendBtn.addEventListener("click", async () => {
-  const text = msgInput.value.trim();
-  if (!text) return;
-  msgInput.value = "";
-  
-  // ✅ append right bubble WITHOUT timestamp
-  appendChatBubble(senderUid, "right", text, null);
-  
-  // send using new backend structure
-  await sendDirectMessage(currentUser.uid, senderUid, text);
-});
-
-msgInput.addEventListener("keydown", async (e) => {
-  if (e.key === "Enter") {
+  // send + enter key - using NEW sendDirectMessage function
+  const msgInput = chatWin.querySelector(`#msgInput-${senderUid}`);
+  sendBtn.addEventListener("click", async () => {
     const text = msgInput.value.trim();
     if (!text) return;
     msgInput.value = "";
     
-    // ✅ No timestamp for sent messages
     appendChatBubble(senderUid, "right", text, null);
     await sendDirectMessage(currentUser.uid, senderUid, text);
-  }
-});
+  });
+
+  msgInput.addEventListener("keydown", async (e) => {
+    if (e.key === "Enter") {
+      const text = msgInput.value.trim();
+      if (!text) return;
+      msgInput.value = "";
+      
+      appendChatBubble(senderUid, "right", text, null);
+      await sendDirectMessage(currentUser.uid, senderUid, text);
+    }
+  });
 
   makeChatDraggable(chatWin);
 
   return chatWin;
 }
-
 ///
 // Add this function to clean up any old read messages when user logs in
 async function cleanupReadMessages(myUid) {
