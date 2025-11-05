@@ -868,13 +868,16 @@ function attachMessageListeners(myUid, onMessageCallback, activeTables = []) {
   });
 }
 ///
-// 🧲 Make the chat window draggable by its header
+// 🧲 Make the chat window draggable by its header (MOBILE + DESKTOP)
 function makeChatDraggable(win) {
   const header = win.querySelector(".chatHeader");
   if (!header) return;
+  
   let offsetX = 0, offsetY = 0, dragging = false;
 
+  // 🖱️ MOUSE EVENTS (Desktop)
   header.addEventListener("mousedown", (e) => {
+    e.preventDefault();
     dragging = true;
     offsetX = e.clientX - win.offsetLeft;
     offsetY = e.clientY - win.offsetTop;
@@ -886,24 +889,38 @@ function makeChatDraggable(win) {
     win.style.left = e.clientX - offsetX + "px";
     win.style.top  = e.clientY - offsetY + "px";
     win.style.right = "auto";
+    win.style.bottom = "auto";
   });
 
   document.addEventListener("mouseup", () => {
     dragging = false;
     document.body.style.userSelect = "auto";
   });
-}
 
-// 🔀 Reposition all open chat windows after one closes
-function repositionChatWindows() {
-  let i = 0;
-  for (const uid in openChatWindows) {
-    const win = openChatWindows[uid];
-    if (!win) continue;
-    win.style.top = `${i * 35}px`;
-    win.style.left = "0px";
-    i++;
-  }
+  // 📱 TOUCH EVENTS (Mobile)
+  header.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    dragging = true;
+    const touch = e.touches[0];
+    offsetX = touch.clientX - win.offsetLeft;
+    offsetY = touch.clientY - win.offsetTop;
+    document.body.style.userSelect = "none";
+  });
+
+  document.addEventListener("touchmove", (e) => {
+    if (!dragging) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    win.style.left = touch.clientX - offsetX + "px";
+    win.style.top  = touch.clientY - offsetY + "px";
+    win.style.right = "auto";
+    win.style.bottom = "auto";
+  }, { passive: false }); // Important: allows preventDefault()
+
+  document.addEventListener("touchend", () => {
+    dragging = false;
+    document.body.style.userSelect = "auto";
+  });
 }
 ///
 
