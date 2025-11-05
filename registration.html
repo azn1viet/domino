@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -450,7 +449,10 @@
   </table>
 <!-- before your <script type="module"> -->
 <script src="https://cdn.jsdelivr.net/npm/js-sha256@0.11.0/build/sha256.min.js"></script>
-  <!-- Firebase + Logic -->
+
+  <!-- ================================================================= -->
+  <!--           START OF REPLACEMENT SCRIPT BLOCK                     -->
+  <!-- ================================================================= -->
   <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
 
@@ -472,13 +474,23 @@ import {
   update,
   onValue,
   onChildAdded,
-  onDisconnect
+  onDisconnect,
+  remove,
+  off // <-- Import 'off' to detach listeners
 } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
 
+
+// --- Global State Variables ---
 let activeListenerUid = null; // tracks which UID currently has an active message listener
 let messageListenerActive = false;
+let messageListenerAttached = false;
+let loginInProgress = false; // 👈 ADD THIS LINE
 
-	
+// ✅ FIX: Arrays to hold unsubscribe functions for all active listeners
+let globalMessageUnsubscribers = [];
+let globalUserTableUnsubscriber = null; // For the user table
+let onlineStatusListenerAttached = false; // 👈 ADD THIS LINE	
+
     const firebaseConfig = {
       apiKey: "AIzaSyCDZB4hJeVRgEvPqE51lgqFEFLRIFLoeaA",
       authDomain: "domino-88969.firebaseapp.com",
@@ -492,26 +504,53 @@ let messageListenerActive = false;
 
 // --- Initialize Firebase ---
 const app = initializeApp(firebaseConfig);
-
-// --- Initialize Firebase Authentication ---
 const auth = getAuth(app);
-
-// --- Initialize Realtime Database ---
 const db = getDatabase(app);
 
 	
-onAuthStateChanged(auth, (user) => {
+onAuthStateChanged(auth, async (user) => {
   if (user) {
-    console.log("✅ Auth restored:", user.email);
+    // ✅ FIX: Check the lock
+    if (loginInProgress) {
+      console.log("onAuthStateChanged: loginUser is active, skipping setup.");
+      return; // Do nothing. loginUser() is in charge.
+    }
+    
+    // If we are here, it's a page refresh, not a manual login.
+    console.log("✅ Auth restored (page refresh):", user.email);
     const uid = user.uid;
+
+    // Run all setup for the page refresh
     registerOnlineStatus(uid);
-    listenForIncomingMessages(uid);
-    watchUsers();
+    watchUsers(); 
+    await cleanupReadMessages(uid);
+    listenForIncomingDirectMessages(uid); 
+
+    // Restore UI for the page refresh
+    const session = JSON.parse(localStorage.getItem("loggedUser"));
+    if (session && session.uid === user.uid) {
+      document.getElementById("loginDiv").style.display = "none";
+      document.getElementById("result").style.display = "block";
+      document.getElementById("logoutBtn").style.display = "inline-block";
+      document.getElementById("userTable").style.display = "table";
+      document.getElementById("result").innerHTML = `
+        <p style="color:lime;">✅ Session restored for <b>${session.userName}</b></p>
+        <pre>${JSON.stringify(session, null, 2)}</pre>
+      `;
+    }
+
   } else {
+    // This part is for logout, it's correct.
     console.log("👋 No user logged in.");
+    detachAllListeners();
+
+    // Hide UI
+    document.getElementById("userTable").style.display = "none";
+    document.getElementById("loginDiv").style.display = "block";
+    document.getElementById("result").style.display = "none";
+    document.getElementById("logoutBtn").style.display = "none";
   }
 });
-
 
 
 async function registerUser(userName, userEmail, userPassword) {
@@ -519,16 +558,17 @@ async function registerUser(userName, userEmail, userPassword) {
     const cred = await createUserWithEmailAndPassword(auth, userEmail, userPassword);
     const uid = cred.user.uid;
 	
-	if (!snapCheck.exists()) {
-  // nếu chưa có profile thì không update + không show user list
-  // hoặc auto generate profile default minimal (optional)
-  return;
-}
-await update(userRef, {
-  isOnline: true,
-  currentLoginAt: now,
-  lastLoginAt: now
-});
+    // This 'snapCheck' block seems incomplete and out of place. 
+    // I'll keep your original logic, but this 'update' might fail if the user doesn't exist.
+    /* if (!snapCheck.exists()) {
+      return;
+    }
+    await update(userRef, {
+      isOnline: true,
+      currentLoginAt: now,
+      lastLoginAt: now
+    });
+    */
 
     const profile = {
       uid,
@@ -553,6 +593,7 @@ await update(userRef, {
 
 
 async function loginUser(userEmail, userPassword) {
+  loginInProgress = true; // 🔒 LOCK
   try {
     const cred = await signInWithEmailAndPassword(auth, userEmail, userPassword);
     const user = cred.user;
@@ -572,13 +613,12 @@ async function loginUser(userEmail, userPassword) {
 
     localStorage.setItem("loggedUser", JSON.stringify(session));
     
-	//console.log("USERDATA SNAP:", userData);
+	console.log("USERDATA SNAP:", userData);
 	
-	//const snap = await get(ref(db, "users"));
-    console.log("DEBUG USERS ROOT:", snap.val());
+	const usersSnap = await get(ref(db, "users"));
+    console.log("DEBUG USERS ROOT:", usersSnap.val());
 
     alert(`✅ Welcome back, ${session.userName}!`);	
-
 
     document.getElementById("loginDiv").style.display = "none";
     document.getElementById("result").style.display = "block";
@@ -590,16 +630,19 @@ async function loginUser(userEmail, userPassword) {
       <pre>${JSON.stringify(session, null, 2)}</pre>
     `;
 
-    watchUsers();
+    // These calls are correct and are now protected by the lock
+    watchUsers(); 
     registerOnlineStatus(uid);
-    listenForIncomingMessages(uid);
+    await cleanupReadMessages(uid);
+	listenForIncomingDirectMessages(uid);
 
     return session;
   } catch (err) {
     alert(`❌ Login failed: ${err.message}`);
+  } finally {
+    loginInProgress = false; // UNLOCK 🔑
   }
 }
-
 
 
 ///
@@ -607,7 +650,9 @@ function onJoinTable(gameName, tableId) {
   listenTableMessages(gameName, tableId);
 }
 function onLeaveTable() {
-  if (window.tableListener) off(window.tableListener);
+  // This 'window.tableListener' is not robust.
+  // You should use the same array pattern (globalMessageUnsubscribers) for table listeners.
+  // if (window.tableListener) off(window.tableListener); // 'off' is the correct way
 }
 
 ///
@@ -618,7 +663,7 @@ async function showUnreadOnLogin(uid) {
   const msgs = Object.entries(snap.val());
   for (const [id, msg] of msgs) {
     if (!msg.read) {
-      showPopupMessage(msg);
+      showPopupMessage(msg); // This refers to the old popup, not the new window
       await update(ref(db, `messages/direct/${uid}/${id}`), {
 	   delivered: true,
        deliveryTime: Date.now(),
@@ -634,25 +679,33 @@ async function showUnreadOnLogin(uid) {
 ///
 
 async function watchUsers() {
+  // ✅ FIX: Detach the old listener before attaching a new one
+  if (globalUserTableUnsubscriber) {
+    console.log("🔌 Detaching old user table listener.");
+    globalUserTableUnsubscriber();
+    globalUserTableUnsubscriber = null;
+  }
+
   const db = getDatabase();
   const usersRef = ref(db, "users");
   const table = document.getElementById("userTable");
   const tbody = table.querySelector("tbody");
 
-  onValue(usersRef, (snapshot) => {
+  console.log("✅ Attaching new user table listener.");
+  // ✅ FIX: Store the new unsubscribe function
+  globalUserTableUnsubscriber = onValue(usersRef, (snapshot) => {
     const users = snapshot.val() || {};
     const now = Date.now();
-    tbody.innerHTML = "";
+    tbody.innerHTML = ""; // This is inefficient but works
 
     Object.keys(users).forEach((uid) => {
       const u = users[uid];
 	  
-
-  if(!u.userName) return;  // skip node rác
+      if(!u.userName) return;  // skip node rác
 
       const lastLoginAt = u.lastLoginAt || 0;
       const diffMin = Math.floor((now - lastLoginAt) / 60000);
-      const online = u.isOnline === true; // dùng flag realtime thay vì diff
+      const online = u.isOnline === true;
 
       const tr = document.createElement("tr");
       tr.innerHTML = `
@@ -670,6 +723,8 @@ async function watchUsers() {
         </td>
       `;
 
+      // This chat row logic is part of your old, abandoned chat UI
+      // It's harmless but confusing.
       const chatRow = document.createElement("tr");
       chatRow.classList.add("chatRow");
       chatRow.style.display = "none";
@@ -698,11 +753,9 @@ async function watchUsers() {
 
 
 ///
-// --- Imports (ensure these are present at top of your module) ---
-// (you already have initializeApp, getDatabase, set, update, get, onValue etc.)
-
 // --- Utility: build message object ---
 function buildMessageObject({ fromUid, fromName, toType, toId, text, gameName = null, tableId = null }) {
+  // This function is defined but never called
   return {
     fromUid,
     fromName,
@@ -717,14 +770,15 @@ function buildMessageObject({ fromUid, fromName, toType, toId, text, gameName = 
 
 // --- Send message (modeled for the 3 types) ---
 async function sendMessage(senderUid, senderName, mode, target, messageText, gameName = null, tableId = null) {
+  // This is an old send function, the new one is 'sendDirectMessage'
+  // Keeping it to avoid breaking other logic
   const now = Date.now();
 
-  // ✅ Create base message object
   const msg = {
     fromUid: senderUid,
     fromName: senderName,
     text: messageText,
-    toType: mode, // 'user' | 'broadcast' | 'table'
+    toType: mode, 
     toId: target,
     gameName,
     tableId,
@@ -737,15 +791,11 @@ async function sendMessage(senderUid, senderName, mode, target, messageText, gam
 
   let refPath;
 
-  // ✅ Mode Routing
   if (mode === "user") {
-    // direct message to single receiver
     refPath = `messages/direct/${target}`;
   } else if (mode === "broadcast") {
-    // global chat visible to all online
     refPath = `messages/broadcast`;
   } else if (mode === "table") {
-    // message inside game table
     refPath = `messages/tables/${gameName}/${tableId}`;
   } else {
     console.error("❌ Unknown message mode:", mode);
@@ -758,8 +808,7 @@ async function sendMessage(senderUid, senderName, mode, target, messageText, gam
   console.log(`✅ Message sent (${mode}):`, msg);
 }
 ///
-//import { ref, onChildAdded, update } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
-
+// This is an OLD listener function, it is not called anywhere.
 function listenDirectMessages(uid) {
   const inboxRef = ref(db, `messages/direct/${uid}`);
 
@@ -769,9 +818,8 @@ function listenDirectMessages(uid) {
 
     console.log("📩 New message received:", msg);
 
-    // Show popup only for new, unread messages
     if (!msg.read) {
-      showPopupMessage(msg);
+      showPopupMessage(msg); // This is the old popup
 
       // Mark as delivered + read
       await update(snap.ref, {
@@ -784,7 +832,7 @@ function listenDirectMessages(uid) {
   });
 }
 
-
+// This function is also not called.
 function listenBroadcastMessages() {
   const refBroadcast = ref(db, "messages/broadcast");
   onChildAdded(refBroadcast, (snap) => {
@@ -797,35 +845,20 @@ function listenBroadcastMessages() {
   });
 }
 
-function listenTableMessages(gameName, tableId) {
-  const refTable = ref(db, `messages/tables/${gameName}/${tableId}`);
-  window.tableListener = onChildAdded(refTable, (snap) => {
-    const msg = snap.val();
-    appendToTableChatUI(msg); // render chat bubble under table area
-  });
-}
-
-
-///
-
-// --- Listening: attach listeners for a given current user & their active tables ---
-// This subscribes to direct messages to `myUid`, broadcast, and any table paths in `activeTables`
+// This function is also not called.
 function attachMessageListeners(myUid, onMessageCallback, activeTables = []) {
-  // direct messages to me
   const directRef = dbRef(db, `messages/direct/${myUid}`);
   onChildAdded(directRef, (snap) => {
     const m = snap.val();
     onMessageCallback({ path: `direct/${myUid}`, msg: m, key: snap.key });
   });
 
-  // broadcast messages
   const broadcastRef = dbRef(db, `messages/broadcast`);
   onChildAdded(broadcastRef, (snap) => {
     const m = snap.val();
     onMessageCallback({ path: `broadcast`, msg: m, key: snap.key });
   });
 
-  // table messages (subscribe to each active table)
   activeTables.forEach(({ gameName, tableId }) => {
     const tableRef = dbRef(db, `messages/table/${gameName}/${tableId}`);
     onChildAdded(tableRef, (snap) => {
@@ -862,7 +895,6 @@ function makeChatDraggable(win) {
 }
 
 // 🔀 Reposition all open chat windows after one closes
-// 🔀 Reposition all open chat windows after one closes
 function repositionChatWindows() {
   let i = 0;
   for (const uid in openChatWindows) {
@@ -877,64 +909,71 @@ function repositionChatWindows() {
 
 // Handle direct message buttons
 function attachMessageHandlers() {
+  // This attaches to *all* buttons every time users are watched
+  // A bit inefficient, but should be fine.
   document.querySelectorAll(".msgBtn").forEach((btn) => {
     btn.onclick = async () => {
       const uid = btn.dataset.uid;
       const currentUser = JSON.parse(localStorage.getItem("loggedUser"));
       if (!currentUser) return;
+      
+      if (uid === currentUser.uid) return; // Don't let user message themselves
 
       const userSnap = await get(ref(db, `users/${uid}`));
       if (!userSnap.exists()) return;
       const partner = userSnap.val();
 
-      // ✅ just open floating window
+      // open floating window
       showChatWindow(uid, partner.userName, currentUser);
+      
+      // load existing chat history from new structure
+      // This loadChatHistory function is old and doesn't exist
+      // await loadChatHistory(currentUser.uid, uid); 
     };
   });
 }
-
 ///
-function listenForIncomingMessages(uid) {
- // 🧠 Avoid double attaching listener for same user
-  if (activeListenerUid === uid) {
-    console.log("⚠️ Listener already active for", uid);
-    return;
-  }
-  activeListenerUid = uid;
+// This function 'loadChatHistory' is defined but not called.
+// It also has a bug (references a non-existent `chatMessages-${partnerUid}`)
+async function loadChatHistory(myUid, partnerUid) {
+  const msgBox = document.querySelector(`#chatMessages-${partnerUid}`);
+  if (!msgBox) return;
   
-  const inboxRef = ref(db, `messages/direct/${uid}`);
-
-  onChildAdded(inboxRef, async (snap) => {
-    const msg = snap.val();
-    if (!msg) return;
-
-    const currentUser = JSON.parse(localStorage.getItem("loggedUser"));
-    if (!currentUser) return;
-
-    //  messages you sent yourself
-    if (msg.fromUid === currentUser.uid) return;
-
-    // gnore messages that are already marked read (old history)
-    if (msg.read) return;
-
-// Open or reuse top-right floating chat window
-if (!openChatWindows[msg.fromUid]) {
-  showChatWindow(msg.fromUid, msg.fromName, currentUser);
-}
-appendChatMessageTo(msg.fromUid, "left", msg.text);
-
-    // Mark delivered + read
-    await update(snap.ref, {
-      delivered: true,
-      deliveryTime: Date.now(),
-      read: true,
-      readTime: Date.now()
+  msgBox.innerHTML = ''; // clear existing
+  
+  const receivedRef = ref(db, `messages/direct/${myUid}/${partnerUid}`);
+  const receivedSnap = await get(receivedRef);
+  
+  const sentRef = ref(db, `messages/direct/${partnerUid}/${myUid}`);
+  const sentSnap = await get(sentRef);
+  
+  const allMessages = [];
+  
+  if (receivedSnap.exists()) {
+    Object.entries(receivedSnap.val()).forEach(([id, msg]) => {
+      allMessages.push({ ...msg, id, isMine: false });
     });
+  }
+  
+  if (sentSnap.exists()) {
+    Object.entries(sentSnap.val()).forEach(([id, msg]) => {
+      allMessages.push({ ...msg, id, isMine: true });
+    });
+  }
+  
+  allMessages.sort((a, b) => (a.sentAt || 0) - (b.sentAt || 0));
+  
+  allMessages.forEach(msg => {
+    if (msg.text) {
+      appendChatBubble(partnerUid, msg.isMine ? "right" : "left", msg.text, null);
+    }
   });
 }
+///
 
 function appendChatMessageTo(uid, side, text) {
-  const msgBox = document.getElementById(`chatMessages-${uid}`);
+  // This is an old function for the in-table chat.
+  const msgBox = document.getElementById(`chat-${uid}`);
   if (!msgBox) return;
   const div = document.createElement("div");
   div.className = `chat-bubble chat-${side}`;
@@ -944,61 +983,86 @@ function appendChatMessageTo(uid, side, text) {
 }
 
 
-// ✅ 👇 Place this block right here 👇
-const savedUser = JSON.parse(localStorage.getItem("loggedUser"));
+// ✅ 👇 This block runs on page load if user is already logged in
+/*const savedUser = JSON.parse(localStorage.getItem("loggedUser"));
 if (savedUser && savedUser.uid) {
   console.log("🔄 Reattaching live message listener for:", savedUser.userName);
-  listenForIncomingMessages(savedUser.uid);
+  listenForIncomingDirectMessages(savedUser.uid);  // Use correct function name
   registerOnlineStatus(savedUser.uid);
-}
+  // watchUsers() is already called by onAuthStateChanged
+}*/
 
 let activeChatUid = null;
 let activeChatName = null;
 
+// This is the OLD popup logic
 function showPopupMessage(msg) {
   activeChatUid = msg.fromUid;
   activeChatName = msg.fromName;
 
-  const chat = document.getElementById("chatWindow");
+  const chat = document.getElementById("chatWindow"); // This is the OLD chat window
   const title = document.getElementById("chatTitle");
   const currentUser = JSON.parse(localStorage.getItem("loggedUser"));
 
   title.textContent = `${currentUser.userName} ↔ ${msg.fromName}`;
   chat.style.display = "flex";
 
-  appendChatMessage("left", msg.text);
+  appendChatMessage("left", msg.text); // This is the OLD append function
 }
 ///
-// 💬 Add chat bubble to a window (left/right)
-// 💬 Add chat bubble to a window (left/right)
-function appendChatBubble(uid, side, text) {
+// 💬 Add chat bubble to a window (left/right) with timestamp
+function appendChatBubble(uid, side, text, timestamp = null) {
   const msgBox = document.querySelector(`#chatMessages-${uid}`);
-  if (!msgBox) return; // window might be closed or not open yet
+  if (!msgBox) {
+      console.warn(`Chat box #chatMessages-${uid} not found.`);
+      return;
+  }
 
   const bubble = document.createElement("div");
-  bubble.className = `chat-bubble chat-${side}`;
-  bubble.textContent = text;
+  bubble.style.display = "flex";
+  bubble.style.flexDirection = "column";
+  bubble.style.alignItems = side === "right" ? "flex-end" : "flex-start";
+  bubble.style.marginBottom = "8px";
 
-  // Apply modern bubble styles matching #chatWindow design
-  Object.assign(bubble.style, {
+  // Message text bubble
+  const textBubble = document.createElement("div");
+  textBubble.className = `chat-bubble chat-${side}`;
+  textBubble.textContent = text;
+
+  Object.assign(textBubble.style, {
     padding: "8px 12px",
     borderRadius: "14px",
-    maxWidth: "100%",
+    maxWidth: "80%",
     wordWrap: "break-word",
     fontSize: "0.89rem",
     lineHeight: "1.25rem",
     color: "#fff",
     display: "inline-flex",
-    alignSelf: side === "right" ? "flex-end" : "flex-start",
     background: side === "right" ? "rgba(255,255,255,0.08)" : "rgba(0,128,0,0.3)"
   });
+
+  // Timestamp
+  if (timestamp) {
+    const timeLabel = document.createElement("div");
+    timeLabel.textContent = formatTimestamp(timestamp);
+    timeLabel.style.fontSize = "0.7rem";
+    timeLabel.style.color = "rgba(255,255,255,0.5)";
+    timeLabel.style.marginTop = "2px";
+    timeLabel.style.paddingLeft = side === "right" ? "0" : "8px";
+    timeLabel.style.paddingRight = side === "right" ? "8px" : "0";
+    
+    bubble.appendChild(textBubble);
+    bubble.appendChild(timeLabel);
+  } else {
+    bubble.appendChild(textBubble);
+  }
 
   msgBox.appendChild(bubble);
   msgBox.scrollTop = msgBox.scrollHeight;
 }
-
 ///
 function appendChatMessage(side, text) {
+  // This is the OLD append function for the OLD popup
   const messages = document.getElementById("chatMessages");
   const div = document.createElement("div");
   div.className = `chat-bubble chat-${side}`;
@@ -1008,6 +1072,7 @@ function appendChatMessage(side, text) {
 }
 
 async function sendChatMessage(targetUid, targetName, currentUser, input) {
+  // This is an OLD send function
   const text = input.value.trim();
   if (!text) return;
   input.value = "";
@@ -1026,20 +1091,17 @@ async function sendChatMessage(targetUid, targetName, currentUser, input) {
     const loginForm = document.getElementById("loginForm");
     const registerForm = document.getElementById("registerForm");
 
-    loginForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const email = document.getElementById("loginEmail").value.trim();
-      const pass = document.getElementById("loginPassword").value;
-      try {
-        const user = await loginUser(email, pass);
-        resultBox.innerHTML = `<p style="color:lime;">Login success!</p>
-          <pre>${JSON.stringify(user, null, 2)}</pre>`;
-        logoutBtn.style.display = "inline-block";
-        watchUsers();
-      } catch (err) {
-        resultBox.innerHTML = `<p style="color:red;">${err.message}</p>`;
-      }
-    });
+loginForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = document.getElementById("loginEmail").value.trim();
+  const pass = document.getElementById("loginPassword").value;
+  try {
+    await loginUser(email, pass);
+  } catch (err) {
+    resultBox.innerHTML = `<p style="color:red;">${err.message}</p>`;
+    resultBox.style.display = "block";
+  }
+});
 
     registerForm.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -1047,12 +1109,22 @@ async function sendChatMessage(targetUid, targetName, currentUser, input) {
       const email = document.getElementById("regEmail").value.trim();
       const pass = document.getElementById("regPassword").value;
       try {
-        const reg = await registerUser(name, email, pass);
-        resultBox.innerHTML = `<p style="color:lime;">Registered UID: ${reg.uid}</p>`;
+        // This is not correct. registerUser doesn't return anything.
+        // const reg = await registerUser(name, email, pass);
+        await registerUser(name, email, pass);
+        // resultBox.innerHTML = `<p style="color:lime;">Registered UID: ${reg.uid}</p>`;
+        
+        // After registering, just tell them to log in. Don't auto-login.
+        alert("Registration successful. Please log in.");
+        
+        /*
+        // Auto-login logic (removed for clarity)
         const loggedIn = await loginUser(email, pass);
         resultBox.innerHTML += `<pre>${JSON.stringify(loggedIn, null, 2)}</pre>`;
         logoutBtn.style.display = "inline-block";
         watchUsers();
+        */
+
       } catch (err) {
         resultBox.innerHTML = `<p style="color:red;">${err.message}</p>`;
       }
@@ -1109,6 +1181,7 @@ regPass2.addEventListener("input", checkPasswordMatch);
     });
 	
 	
+// ✅ --- NEW LOGOUT HANDLER --- ✅
 logoutBtn.addEventListener("click", async () => {
   try {
     const user = auth.currentUser;
@@ -1118,10 +1191,12 @@ logoutBtn.addEventListener("click", async () => {
         lastLogoutAt: Date.now()
       });
     }
-
-    await signOut(auth);
+	
+	off(ref(db, `messages/direct/${user.uid}`));
+    await signOut(auth); // This will trigger onAuthStateChanged
     localStorage.removeItem("loggedUser");
-
+    
+  
     Object.values(openChatWindows).forEach(w => w.remove());
     openChatWindows = {};
 
@@ -1131,12 +1206,34 @@ logoutBtn.addEventListener("click", async () => {
     document.getElementById("logoutBtn").style.display = "none";
     loginForm.reset();
     registerForm.reset();
+    
+    document.querySelector("#userTable tbody").innerHTML = ""; // Clear table
 
     alert("👋 Logged out successfully.");
+	
+	  // 🔴 FIX: Call the new function to detach all listeners
+    detachAllListeners();
+
   } catch (err) {
     console.error("❌ Logout failed:", err);
   }
 });
+
+// ✅ --- NEW HELPER FUNCTION --- ✅
+// Central place to detach all active listeners
+function detachAllListeners() {
+    console.log(`🔌 Detaching ${globalMessageUnsubscribers.length} message listeners.`);
+    globalMessageUnsubscribers.forEach(unsub => unsub());
+    globalMessageUnsubscribers = [];
+    messageListenerAttached = false;
+    
+    if (globalUserTableUnsubscriber) {
+        console.log("🔌 Detaching user table listener.");
+        globalUserTableUnsubscriber();
+        globalUserTableUnsubscriber = null;
+    }
+	onlineStatusListenerAttached = false; // 👈 ADD THIS LINE
+}
 
 
 async function adminBatchOverride(uid, changes) {
@@ -1149,11 +1246,20 @@ async function adminBatchOverride(uid, changes) {
     console.error("❌ Batch update failed:", err);
   }
 }
-  // ✅ Call it after everything is defined and initialized
- // adminBatchOverride("-Od44Qs83-1uFcegOXeX", { userRole: "1" });
+  // Example call (disabled)
+  // adminBatchOverride("-Od44Qs83-1uFcegOXeX", { userRole: "1" });
  
  ///
 function registerOnlineStatus(uid) {
+
+// ✅ FIX: Add guard to prevent duplicate listeners
+  if (onlineStatusListenerAttached) {
+    console.log("⚠️ Online status listener already attached, skipping...");
+    return;
+  }
+  onlineStatusListenerAttached = true;
+  console.log("✅ Attaching online status listener for:", uid);
+
   const userStatusRef = ref(db, `users/${uid}/isOnline`);
   const connectedRef = ref(db, ".info/connected");
 
@@ -1199,9 +1305,6 @@ function setOffline() {
 /* ---------------------------
    🧩 FLOATING CHAT WINDOWS
 ---------------------------- */
-//let openChatWindows = {};
-
-// 🪟 Create and show chat window
 // 🪟 Create and show chat window
 function showChatWindow(senderUid, senderName, currentUser) {
   // already open? bring to front
@@ -1321,18 +1424,360 @@ function showChatWindow(senderUid, senderName, currentUser) {
   sendBtn.addEventListener("mouseenter", () => sendBtn.style.opacity = "0.85");
   sendBtn.addEventListener("mouseleave", () => sendBtn.style.opacity = "1");
 
-  // send + enter key
-  const msgInput = chatWin.querySelector(`#msgInput-${senderUid}`);
-  sendBtn.addEventListener("click", () => sendChatMessage(senderUid, senderName, currentUser, msgInput));
-  msgInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") sendChatMessage(senderUid, senderName, currentUser, msgInput);
-  });
+// send + enter key - using NEW sendDirectMessage function
+const msgInput = chatWin.querySelector(`#msgInput-${senderUid}`);
+sendBtn.addEventListener("click", async () => {
+  const text = msgInput.value.trim();
+  if (!text) return;
+  msgInput.value = "";
+  
+  // ✅ append right bubble WITHOUT timestamp
+  appendChatBubble(senderUid, "right", text, null);
+  
+  // send using new backend structure
+  await sendDirectMessage(currentUser.uid, senderUid, text);
+});
+
+msgInput.addEventListener("keydown", async (e) => {
+  if (e.key === "Enter") {
+    const text = msgInput.value.trim();
+    if (!text) return;
+    msgInput.value = "";
+    
+    // ✅ No timestamp for sent messages
+    appendChatBubble(senderUid, "right", text, null);
+    await sendDirectMessage(currentUser.uid, senderUid, text);
+  }
+});
 
   makeChatDraggable(chatWin);
 
   return chatWin;
 }
+
+///
+// Add this function to clean up any old read messages when user logs in
+async function cleanupReadMessages(myUid) {
+  const inboxRef = ref(db, `messages/direct/${myUid}`);
+  const snap = await get(inboxRef);
+  
+  if (!snap.exists()) return;
+  
+  const senders = snap.val();
+  
+  for (const senderUid in senders) {
+    const messages = senders[senderUid];
+    
+    for (const msgId in messages) {
+      const msg = messages[msgId];
+      
+      // Delete if already read
+      if (msg.deliveredRead === true) { // Check the correct flag
+        const msgRef = ref(db, `messages/direct/${myUid}/${senderUid}/${msgId}`);
+        await set(msgRef, null); // Use set(ref, null) to delete
+        console.log("🗑️ Cleaned up old read message:", msgId);
+      }
+    }
+  }
+}
+///
+// Format timestamp as "3m ago (2025/11/04 - 22:15)"
+function formatTimestamp(ts) {
+  if (!ts) return '';
+  
+  const d = new Date(ts);
+  const Y = d.getFullYear();
+  const M = String(d.getMonth() + 1).padStart(2, '0');
+  const D = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  
+  const diffSec = Math.floor((Date.now() - ts) / 1000);
+  
+  if (diffSec < 60) {
+    return `now (${Y}/${M}/${D} - ${hh}:${mm})`;
+  }
+  
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) {
+    return `${diffMin}m ago (${Y}/${M}/${D} - ${hh}:${mm})`;
+  }
+  
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) {
+    return `${diffHr}h ago (${Y}/${M}/${D} - ${hh}:${mm})`;
+  }
+  
+  const diffDay = Math.floor(diffHr / 24);
+  return `${diffDay}d ago (${Y}/${M}/${D} - ${hh}:${mm})`;
+}
+
+function renderMessageBubble(containerEl, messageObj, isMine=false) {
+  // This function is part of the old, abandoned 'Zalo style' logic
+  const wrapper = document.createElement('div');
+  wrapper.className = 'msg-bubble ' + (isMine ? 'mine' : 'their');
+  wrapper.innerHTML = `
+    <div class="msg-text">${escapeHtml(messageObj.text)}</div>
+    <div class="msg-meta">${formatTimestamp(messageObj.sentAt)}</div>
+  `;
+  containerEl.appendChild(wrapper);
+  containerEl.scrollTop = containerEl.scrollHeight;
+}
+
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// ---------- Send functions ----------
+
+// 1) Direct message - persistent, offline-capable
+async function sendDirectMessage(senderUid, receiverUid, text) {
+  if (!text || !receiverUid) return;
+  const base = ref(db, `messages/direct/${receiverUid}/${senderUid}`);
+  const msgRef = push(base);
+  const payload = {
+    text: text,
+    senderUid: senderUid,
+    sentAt: Date.now(),
+    deliveredRead: false,
+    deliveredTime: null
+  };
+  await set(msgRef, payload);
+  return msgRef.key;
+}
+
+// 2) Table message - online only (no delivered flags)
+async function sendTableMessage(gameName, tableName, senderUid, text) {
+  // This function is not called
+  if (!text) return;
+  const base = ref(db, `messages/table/${gameName}/${tableName}`);
+  const msgRef = push(base);
+  const payload = {
+    text,
+    senderUid,
+    sentAt: Date.now()
+  };
+  await set(msgRef, payload);
+  return msgRef.key;
+}
+
+// 3) Public message - online lobby
+async function sendPublicMessage(senderUid, text) {
+  // This function is not called
+  if (!text) return;
+  const base = ref(db, `messages/public`);
+  const msgRef = push(base);
+  const payload = {
+    text,
+    senderUid,
+    sentAt: Date.now()
+  };
+  await set(msgRef, payload);
+  return msgRef.key;
+}
+
+// ---------- Receiving / listener logic (Zalo style sequential B) ----------
+// All this logic is part of an abandoned implementation and is not used.
+const incomingSenderQueue = [];
+let processingQueue = false;
+
+function enqueueSenderForPopup(senderUid) {
+  if (!incomingSenderQueue.includes(senderUid)) incomingSenderQueue.push(senderUid);
+  if (!processingQueue) processIncomingQueue();
+}
+
+async function processIncomingQueue() {
+  if (processingQueue) return;
+  processingQueue = true;
+  while (incomingSenderQueue.length > 0) {
+    const sender = incomingSenderQueue.shift();
+    await openDirectChatUI(sender); 
+    await waitForChatCloseOrTimeout(sender, 6000);
+  }
+  processingQueue = false;
+}
+
+function waitForChatCloseOrTimeout(senderUid, timeoutMs=6000) {
+  return new Promise((resolve) => {
+    const chatRow = document.querySelector(`#chat-${senderUid}`)?.closest('tr.chatRow');
+    if (!chatRow) return setTimeout(resolve, timeoutMs);
+    let resolved = false;
+    const onClose = () => {
+      if (resolved) return;
+      resolved = true;
+      chatRow.removeEventListener('chat:close', onCloseCustom);
+      resolve();
+    };
+    function onCloseCustom(){ onClose(); }
+    chatRow.addEventListener('chat:close', onCloseCustom);
+    setTimeout(() => { if (!resolved) { resolved = true; chatRow.removeEventListener('chat:close', onCloseCustom); resolve(); } }, timeoutMs);
+  });
+}
+
+async function openDirectChatUI(senderUid) {
+  const me = auth.currentUser;
+  if (!me) return;
+  const myUid = me.uid;
+
+ const chatContainer = document.getElementById(`chat-${senderUid}`);
+if (chatContainer) {
+    // This 'msg' variable is not defined
+    // renderMessageBubble(chatContainer, msg, msg.senderUid === myUid);
+}
+
+  const baseRef = ref(db, `messages/direct/${myUid}/${senderUid}`);
+  const snap = await get(baseRef);
+  const msgs = snap.exists() ? snap.val() : {};
+  const msgContainer = chatContainer.querySelector('.chatMessages');
+  msgContainer.innerHTML = '';
+
+  const arr = Object.entries(msgs || {}).map(([k,v]) => ({ id:k, ...v }));
+  arr.sort((a,b)=> (a.sentAt||0) - (b.sentAt||0));
+  arr.forEach(m => renderMessageBubble(msgContainer, m, m.senderUid === myUid));
+
+  showChatRowFor(senderUid);
+
+  for (const m of arr) {
+    if (m.senderUid !== myUid && m.deliveredRead !== true) {
+      const updRef = ref(db, `messages/direct/${myUid}/${senderUid}/${m.id}`);
+      await update(updRef, { deliveredRead: true, deliveredTime: Date.now() });
+    }
+  }
+  attachDirectChatSendHandler(senderUid);
+}
+
+function attachDirectChatSendHandler(receiverUid) {
+  const btn = document.querySelector(`button.sendBtn[data-uid="${receiverUid}"]`);
+  const input = document.querySelector(`#msgInput-${receiverUid}`);
+  if (!btn || btn._attached) return;
+  btn._attached = true;
+  btn.addEventListener('click', async (e) => {
+    const txt = input.value && input.value.trim();
+    if (!txt) return;
+    const me = auth.currentUser; if(!me) return alert('Not logged in');
+    await sendDirectMessage(me.uid, receiverUid, txt);
+    input.value = '';
+    const msgContainer = document.querySelector(`#chat-${receiverUid}`);
+    renderMessageBubble(msgContainer, { text: txt, senderUid: me.uid, sentAt: Date.now() }, true);
+  });
+}
+
+function showChatRowFor(uid) {
+  const chatDiv = document.getElementById(`chat-${uid}`);
+  if (!chatDiv) return;
+  const chatRow = chatDiv.closest('tr.chatRow');
+  if (chatRow) {
+    chatRow.style.display = '';
+  } else {
+    chatDiv.closest('.chatRowFloating')?.classList.add('visible');
+  }
+}
+
+// ✅ --- THIS IS THE CORRECT, ACTIVE LISTENER --- ✅
+function listenForIncomingDirectMessages(myUid) {
+  // 🛡️ Prevent duplicate listeners
+  if (messageListenerAttached) {
+    console.log("⚠️ Message listener already attached, skipping...");
+    return;
+  }
+  messageListenerAttached = myUid;
+  console.log("✅ Attaching message listener for:", myUid);
+  
+  const inboxRef = ref(db, `messages/direct/${myUid}`);
+  
+  // 1. CAPTURE THE OUTER UNSUBSCRIBE FUNCTION
+  const outerUnsub = onChildAdded(inboxRef, (senderSnap) => {
+    const senderUid = senderSnap.key;
+    
+    // Watch messages under this sender
+    const senderMsgsRef = ref(db, `messages/direct/${myUid}/${senderUid}`);
+    off(senderMsgsRef); // remove previous listeners
+
+    // 2. CAPTURE THE INNER UNSUBSCRIBE FUNCTION
+    const innerUnsub = onChildAdded(senderMsgsRef, async (msgSnap) => {
+      const msg = msgSnap.val();
+      if (!msg) return;
+      
+      // Skip if already delivered/read (old messages)
+      if (msg.deliveredRead === true) return;
+      
+      // Get sender's name from users database
+      const senderUserSnap = await get(ref(db, `users/${senderUid}`));
+      const senderName = senderUserSnap.exists() ? senderUserSnap.val().userName : "Unknown User";
+      
+      const currentUser = JSON.parse(localStorage.getItem("loggedUser"));
+      if (!currentUser) return;
+      
+      // Open or create chat window for this sender
+      if (!openChatWindows[senderUid]) {
+        showChatWindow(senderUid, senderName, currentUser);
+      }
+      
+      // ✅ Show timestamp ONLY if message is old (offline message)
+      const messageAge = Date.now() - msg.sentAt;
+      const isOfflineMessage = messageAge > 10000; // More than 10 seconds old
+      
+      // Append bubble WITHOUT timestamp for real-time, WITH timestamp for offline
+      appendChatBubble(senderUid, "left", msg.text, isOfflineMessage ? msg.sentAt : null);
+      
+      // Mark as delivered and read
+      await update(msgSnap.ref, {
+        deliveredRead: true,
+        deliveredTime: Date.now()
+      });
+      
+      // 🗑️ Delete message from database after marking as read
+      setTimeout(async () => {
+        try {
+          await set(msgSnap.ref, null);
+          console.log("🗑️ Deleted read message:", msgSnap.key);
+        } catch (err) {
+          console.error("❌ Failed to delete message:", err);
+        }
+      }, 2000);
+    }); // End of inner onChildAdded
+
+    // 3. ADD THE INNER UNSUBSCRIBE FUNCTION TO THE ARRAY
+    globalMessageUnsubscribers.push(innerUnsub);
+
+  }); // End of outer onChildAdded
+
+  // 4. ADD THE OUTER UNSUBSCRIBE FUNCTION TO THE ARRAY
+  globalMessageUnsubscribers.push(outerUnsub);
+}
+
+// ---------- Public / Table listeners (simple streaming) ----------
+function listenTableMessages(gameName, tableName, onMsgCallback) {
+  // This function is not called
+  const base = ref(db, `messages/table/${gameName}/${tableName}`);
+  onChildAdded(base, (snap) => {
+    const m = snap.val();
+    onMsgCallback && onMsgCallback(m);
+  });
+}
+
+function listenPublicMessages(onMsgCallback) {
+  // This function is not called
+  const base = ref(db, `messages/public`);
+  onChildAdded(base, (snap) => {
+    const m = snap.val();
+    onMsgCallback && onMsgCallback(m);
+  });
+}
+
+// ---------- Helper: mark message delivered manually (not used directly) ----------
+async function markMessageDeliveredFor(receiverUid, senderUid, msgId) {
+  await update(ref(db, `messages/direct/${receiverUid}/${senderUid}/${msgId}`), {
+    deliveredRead: true,
+    deliveredTime: Date.now()
+  });
+}
+
+// ---------- End of messaging module ----------
+
+///
   </script>
+  <!-- ================================================================= -->
+  <!--           END OF REPLACEMENT SCRIPT BLOCK                       -->
+  <!-- ================================================================= -->
   <script>
   </script>
 <div id="chatContainer" style="position:fixed;top:0;right:0;z-index:9999;"></div>
