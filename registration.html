@@ -1671,9 +1671,7 @@ function showChatRowFor(uid) {
   }
 }
 
-// ✅ --- THIS IS THE CORRECT, ACTIVE LISTENER --- ✅
 function listenForIncomingDirectMessages(myUid) {
-  // 🛡️ Prevent duplicate listeners
   if (messageListenerAttached) {
     console.log("⚠️ Message listener already attached, skipping...");
     return;
@@ -1683,65 +1681,61 @@ function listenForIncomingDirectMessages(myUid) {
   
   const inboxRef = ref(db, `messages/direct/${myUid}`);
   
-  // 1. CAPTURE THE OUTER UNSUBSCRIBE FUNCTION
-  const outerUnsub = onChildAdded(inboxRef, (senderSnap) => {
-    const senderUid = senderSnap.key;
+  // Use onValue instead of nested onChildAdded
+  const unsub = onValue(inboxRef, async (snapshot) => {
+    if (!snapshot.exists()) return;
     
-    // Watch messages under this sender
-    const senderMsgsRef = ref(db, `messages/direct/${myUid}/${senderUid}`);
-    off(senderMsgsRef); // remove previous listeners
-
-    // 2. CAPTURE THE INNER UNSUBSCRIBE FUNCTION
-    const innerUnsub = onChildAdded(senderMsgsRef, async (msgSnap) => {
-      const msg = msgSnap.val();
-      if (!msg) return;
+    const allSenders = snapshot.val();
+    
+    for (const senderUid in allSenders) {
+      const messages = allSenders[senderUid];
       
-      // Skip if already delivered/read (old messages)
-      if (msg.deliveredRead === true) return;
-      
-      // Get sender's name from users database
-      const senderUserSnap = await get(ref(db, `users/${senderUid}`));
-      const senderName = senderUserSnap.exists() ? senderUserSnap.val().userName : "Unknown User";
-      
-      const currentUser = JSON.parse(localStorage.getItem("loggedUser"));
-      if (!currentUser) return;
-      
-      // Open or create chat window for this sender
-      if (!openChatWindows[senderUid]) {
-        showChatWindow(senderUid, senderName, currentUser);
-      }
-      
-      // ✅ Show timestamp ONLY if message is old (offline message)
-      const messageAge = Date.now() - msg.sentAt;
-      const isOfflineMessage = messageAge > 10000; // More than 10 seconds old
-      
-      // Append bubble WITHOUT timestamp for real-time, WITH timestamp for offline
-      appendChatBubble(senderUid, "left", msg.text, isOfflineMessage ? msg.sentAt : null);
-      
-      // Mark as delivered and read
-      await update(msgSnap.ref, {
-        deliveredRead: true,
-        deliveredTime: Date.now()
-      });
-      
-      // 🗑️ Delete message from database after marking as read
-      setTimeout(async () => {
-        try {
-          await set(msgSnap.ref, null);
-          console.log("🗑️ Deleted read message:", msgSnap.key);
-        } catch (err) {
-          console.error("❌ Failed to delete message:", err);
+      for (const msgId in messages) {
+        const msg = messages[msgId];
+        
+        // Skip if already delivered/read
+        if (msg.deliveredRead === true) continue;
+        
+        // Get sender's name
+        const senderUserSnap = await get(ref(db, `users/${senderUid}`));
+        const senderName = senderUserSnap.exists() ? senderUserSnap.val().userName : "Unknown User";
+        
+        const currentUser = JSON.parse(localStorage.getItem("loggedUser"));
+        if (!currentUser) return;
+        
+        // Open or create chat window
+        if (!openChatWindows[senderUid]) {
+          showChatWindow(senderUid, senderName, currentUser);
         }
-      }, 2000);
-    }); // End of inner onChildAdded
-
-    // 3. ADD THE INNER UNSUBSCRIBE FUNCTION TO THE ARRAY
-    globalMessageUnsubscribers.push(innerUnsub);
-
-  }); // End of outer onChildAdded
-
-  // 4. ADD THE OUTER UNSUBSCRIBE FUNCTION TO THE ARRAY
-  globalMessageUnsubscribers.push(outerUnsub);
+        
+        // Check if message is old (offline message)
+        const messageAge = Date.now() - msg.sentAt;
+        const isOfflineMessage = messageAge > 10000;
+        
+        // Append bubble
+        appendChatBubble(senderUid, "left", msg.text, isOfflineMessage ? msg.sentAt : null);
+        
+        // Mark as delivered and read
+        const msgRef = ref(db, `messages/direct/${myUid}/${senderUid}/${msgId}`);
+        await update(msgRef, {
+          deliveredRead: true,
+          deliveredTime: Date.now()
+        });
+        
+        // Delete after 2 seconds
+        setTimeout(async () => {
+          try {
+            await set(msgRef, null);
+            console.log("🗑️ Deleted read message:", msgId);
+          } catch (err) {
+            console.error("❌ Failed to delete message:", err);
+          }
+        }, 2000);
+      }
+    }
+  });
+  
+  globalMessageUnsubscribers.push(unsub);
 }
 
 // ---------- Public / Table listeners (simple streaming) ----------
