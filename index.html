@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -235,15 +234,13 @@
       <div class="tab" id="tabRegister">Register</div>
     </div>
 
-    <!-- LOGIN FORM -->
     <form id="loginForm" class="active">
       <input id="loginEmail" type="email" placeholder="Email" required autocomplete="regEmail"/>
       <input id="loginPassword" type="password" placeholder="Password" required  autocomplete="current-password"/>
       <button type="submit">Login</button>
     </form>
 
- <!-- REGISTER FORM -->
-<form id="registerForm">
+ <form id="registerForm">
   <input id="regName" type="text" placeholder="User Name" required autocomplete="username" />
   <input id="regEmail" type="email" placeholder="Email" required autocomplete="email" />
   
@@ -272,25 +269,9 @@
 
   <div id="result"></div>
 
-  <table id="userTable" style="display:none;">
-    <thead>
-      <tr>
-        <th>Name</th>
-        <th>Role</th>
-        <th>Status</th>
-        <th>Message</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
-<!-- before your <script type="module"> -->
-<script src="https://cdn.jsdelivr.net/npm/js-sha256@0.11.0/build/sha256.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/js-sha256@0.11.0/build/sha256.min.js"></script>
 
-  <!-- ================================================================= -->
-  <!--           START OF REPLACEMENT SCRIPT BLOCK                     -->
-  <!-- ================================================================= -->
-  
-<script type="module">
+  <script type="module">
 import { auth, db } from "./firebase.js";
 
 import {
@@ -324,7 +305,7 @@ let loginInProgress = false; // 👈 ADD THIS LINE
 
 // ✅ FIX: Arrays to hold unsubscribe functions for all active listeners
 let globalMessageUnsubscribers = [];
-let globalUserTableUnsubscriber = null; // For the user table
+// let globalUserTableUnsubscriber = null; // <-- REMOVED
 let onlineStatusListenerAttached = false; // 👈 ADD THIS LINE	
 
 
@@ -442,21 +423,27 @@ onAuthStateChanged(auth, async (user) => {
 
     // Run all setup for the page refresh
     registerOnlineStatus(uid);
-    watchUsers(); 
+    // watchUsers(); // <-- REMOVED
     await cleanupReadMessages(uid);
     listenForIncomingDirectMessages(uid); 
 
     // Restore UI for the page refresh
+	
     const session = JSON.parse(localStorage.getItem("loggedUser"));
     if (session && session.uid === user.uid) {
-      document.getElementById("loginDiv").style.display = "none";
+     /* document.getElementById("loginDiv").style.display = "none";
       document.getElementById("result").style.display = "block";
       document.getElementById("logoutBtn").style.display = "inline-block";
-      document.getElementById("userTable").style.display = "table";
+      // document.getElementById("userTable").style.display = "none"; // <-- REMOVED
       document.getElementById("result").innerHTML = `
         <p style="color:lime;">✅ Session restored for <b>${session.userName}</b></p>
         <pre>${JSON.stringify(session, null, 2)}</pre>
-      `;
+      `;*/
+	  
+	  setTimeout(() => {
+    window.location.href = "domino.html";
+}, 100);
+
     }
 
   } else {
@@ -465,7 +452,7 @@ onAuthStateChanged(auth, async (user) => {
     detachAllListeners();
 
     // Hide UI
-    document.getElementById("userTable").style.display = "none";
+    // document.getElementById("userTable").style.display = "none"; // <-- REMOVED
     document.getElementById("loginDiv").style.display = "block";
     document.getElementById("result").style.display = "none";
     document.getElementById("logoutBtn").style.display = "none";
@@ -503,8 +490,18 @@ async function registerUser(userName, userEmail, userPassword) {
     await set(ref(db, `users/${uid}`), profile);
     console.log("REGISTER OK:", profile);
 
-    showCustomPopup("Registration successful! Please login now.", "success");
+showCustomPopup("Registration successful!<br>Please login now.", "success");
+   
+document.getElementById("tabRegister").classList.remove("active");
+document.getElementById("tabLogin").classList.add("active");
+document.getElementById("registerForm").classList.remove("active");
+document.getElementById("loginForm").classList.add("active");
+  
+  const snap = await get(ref(db, "users/" + uid));
+    const userData = snap.exists() ? snap.val() : {};
+   const session = { ...userData, emailVerified:false };
 
+    return session;
   } catch (err) {
     console.error("REGISTER ERROR:", err);
     showCustomPopup(getFriendlyErrorMessage(err), "error");
@@ -538,12 +535,12 @@ async function loginUser(userEmail, userPassword) {
 	const usersSnap = await get(ref(db, "users"));
     console.log("DEBUG USERS ROOT:", usersSnap.val());
 
-    showCustomPopup(`Welcome back, ${session.userName}!`, "success");
+    //showCustomPopup(`Welcome back, ${session.userName}!`, "success");
 
     document.getElementById("loginDiv").style.display = "none";
     document.getElementById("result").style.display = "block";
     document.getElementById("logoutBtn").style.display = "inline-block";
-    document.getElementById("userTable").style.display = "table";
+    // document.getElementById("userTable").style.display = "none"; // <-- REMOVED
 
     document.getElementById("result").innerHTML = `
       <p style="color:lime;">✅ Logged in as <b>${session.userName}</b></p>
@@ -551,7 +548,7 @@ async function loginUser(userEmail, userPassword) {
     `;
 
     // These calls are correct and are now protected by the lock
-    watchUsers(); 
+    // watchUsers(); // <-- REMOVED
     registerOnlineStatus(uid);
     await cleanupReadMessages(uid);
 	listenForIncomingDirectMessages(uid);
@@ -559,7 +556,7 @@ async function loginUser(userEmail, userPassword) {
 	// redirect to game
 setTimeout(() => {
     window.location.href = "domino.html";
-}, 500);
+}, 100);
 
     return session;
   } catch (err) {
@@ -603,79 +600,7 @@ async function showUnreadOnLogin(uid) {
 
 ///
 
-async function watchUsers() {
-  // ✅ FIX: Detach the old listener before attaching a new one
-  if (globalUserTableUnsubscriber) {
-    console.log("🔌 Detaching old user table listener.");
-    globalUserTableUnsubscriber();
-    globalUserTableUnsubscriber = null;
-  }
-
-  //const db = getDatabase();
-  const usersRef = ref(db, "users");
-  const table = document.getElementById("userTable");
-  const tbody = table.querySelector("tbody");
-
-  console.log("✅ Attaching new user table listener.");
-  // ✅ FIX: Store the new unsubscribe function
-  globalUserTableUnsubscriber = onValue(usersRef, (snapshot) => {
-    const users = snapshot.val() || {};
-    const now = Date.now();
-    tbody.innerHTML = ""; // This is inefficient but works
-
-    Object.keys(users).forEach((uid) => {
-      const u = users[uid];
-	  
-      if(!u.userName) return;  // skip node rác
-
-      const lastLoginAt = u.lastLoginAt || 0;
-      const diffMin = Math.floor((now - lastLoginAt) / 60000);
-      const online = u.isOnline === true;
-
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td style="color:lime; font-weight:bold;">${u.userName || "(no name)"}</td>
-        <td>${u.userRole == "1" ? "👑 Admin" : "👤 User"}</td>
-        <td>
-          ${
-            online
-              ? `<span style="color:lime;">●</span> Online`
-              : `<span style="color:gray;">●</span> Offline (${diffMin}m ago)`
-          }
-        </td>
-        <td>
-          <button class="msgBtn" data-uid="${uid}" title="Send Message">💬</button>
-        </td>
-      `;
-
-      // This chat row logic is part of your old, abandoned chat UI
-      // It's harmless but confusing.
-      const chatRow = document.createElement("tr");
-      chatRow.classList.add("chatRow");
-      chatRow.style.display = "none";
-      chatRow.innerHTML = `
-        <td colspan="4">
-          <div class="chatBox">
-            <div class="chatMessages" id="chat-${uid}"></div>
-            <div class="chatInput">
-              <input type="text" placeholder="Type a message..." id="msgInput-${uid}" />
-              <button class="sendBtn" data-uid="${uid}">Send</button>
-            </div>
-          </div>
-        </td>
-      `;
-
-      tbody.appendChild(tr);
-      tbody.appendChild(chatRow);
-    });
-
-    table.style.display = "table";	
-    attachMessageHandlers();
-	//console.log("WATCH USERS SNAPSHOT:", users);
-
-  });
-}
-
+// async function watchUsers() { ... } // <-- ENTIRE FUNCTION REMOVED
 
 ///
 // --- Utility: build message object ---
@@ -850,30 +775,8 @@ function makeChatDraggable(win) {
 ///
 
 // Handle direct message buttons
-function attachMessageHandlers() {
-  // This attaches to *all* buttons every time users are watched
-  // A bit inefficient, but should be fine.
-  document.querySelectorAll(".msgBtn").forEach((btn) => {
-    btn.onclick = async () => {
-      const uid = btn.dataset.uid;
-      const currentUser = JSON.parse(localStorage.getItem("loggedUser"));
-      if (!currentUser) return;
-      
-      if (uid === currentUser.uid) return; // Don't let user message themselves
+// function attachMessageHandlers() { ... } // <-- ENTIRE FUNCTION REMOVED
 
-      const userSnap = await get(ref(db, `users/${uid}`));
-      if (!userSnap.exists()) return;
-      const partner = userSnap.val();
-
-      // open floating window
-      showChatWindow(uid, partner.userName, currentUser);
-      
-      // load existing chat history from new structure
-      // This loadChatHistory function is old and doesn't exist
-      // await loadChatHistory(currentUser.uid, uid); 
-    };
-  });
-}
 ///
 // This function 'loadChatHistory' is defined but not called.
 // It also has a bug (references a non-existent `chatMessages-${partnerUid}`)
@@ -1132,14 +1035,14 @@ logoutBtn.addEventListener("click", async () => {
     Object.values(openChatWindows).forEach(w => w.remove());
     openChatWindows = {};
 
-    document.getElementById("userTable").style.display = "none";
+    // document.getElementById("userTable").style.display = "none"; // <-- REMOVED
     document.getElementById("loginDiv").style.display = "block";
     document.getElementById("result").style.display = "none";
     document.getElementById("logoutBtn").style.display = "none";
     loginForm.reset();
     registerForm.reset();
     
-    document.querySelector("#userTable tbody").innerHTML = ""; // Clear table
+    // document.querySelector("#userTable tbody").innerHTML = ""; // <-- REMOVED
 
     showCustomPopup("Logged out successfully. See you soon!", "success");
 	
@@ -1159,11 +1062,14 @@ function detachAllListeners() {
     globalMessageUnsubscribers = [];
     messageListenerAttached = false;
     
+    /*
     if (globalUserTableUnsubscriber) {
         console.log("🔌 Detaching user table listener.");
         globalUserTableUnsubscriber();
         globalUserTableUnsubscriber = null;
     }
+    */ // <-- BLOCK REMOVED
+
 	onlineStatusListenerAttached = false; // 👈 ADD THIS LINE
 }
 
@@ -1733,27 +1639,9 @@ async function markMessageDeliveredFor(receiverUid, senderUid, msgId) {
 
 ///
   </script>
-  <!-- ================================================================= -->
-  <!--           END OF REPLACEMENT SCRIPT BLOCK                       -->
-  <!-- ================================================================= -->
   <script>
   </script>
 <div id="chatContainer" style="position:fixed;top:0;right:0;z-index:9999;"></div>
-
-<!--template id="chat-template">
-  <div class="chatWindow">
-    <div class="chatHeader">
-      <span class="chatTitle"></span>
-      <button class="chatClose">✖</button>
-    </div>
-    <div class="chatMessages"></div>
-    <div class="chatInput">
-      <input type="text" placeholder="Type a message...">
-      <button class="sendBtn">Send</button>
-    </div>
-  </div>
-</template-->
-
 
 </body>
 </html>

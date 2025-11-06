@@ -1472,7 +1472,14 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 <script type="module">
 import { auth, db } from "./firebase.js";
-import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+
 import {
   ref,
   ref as dbRef,
@@ -1597,6 +1604,9 @@ function getFriendlyErrorMessage(firebaseError) {
 
   return errorMap[errorCode] || firebaseError.message || "An error occurred. Please try again.";
 }
+
+///
+
 ///
 
 onAuthStateChanged(auth, user => {
@@ -1615,8 +1625,54 @@ else{
   }
 
   // header (only yourself)
-  document.getElementById("message-list-user").textContent = session.userName;
- 
+const header = document.getElementById("message-list-user");
+
+// build DOM manually
+header.innerHTML = `
+  <span><strong>${session.userName}</strong></span><br>
+  <span class="logoutBtn" style="float:right; cursor:pointer;">Log out</span><br><br>
+`;
+header.querySelector(".logoutBtn").addEventListener("click", async () => {
+    // ✅ --- NEW LOGOUT HANDLER --- ✅
+//logoutBtn.addEventListener("click", async () => {
+  try {
+    const user = auth.currentUser;
+    if (user) {
+      await update(ref(db, `users/${user.uid}`), {
+        isOnline: false,
+        lastLogoutAt: Date.now()
+      });
+    }
+	
+	off(ref(db, `messages/direct/${user.uid}`));
+    await signOut(auth); // This will trigger onAuthStateChanged
+    localStorage.removeItem("loggedUser");
+    
+  
+    Object.values(openChatWindows).forEach(w => w.remove());
+    openChatWindows = {};
+
+    document.getElementById("userTable").style.display = "none";
+    document.getElementById("loginDiv").style.display = "block";
+    document.getElementById("result").style.display = "none";
+    document.getElementById("logoutBtn").style.display = "none";
+    loginForm.reset();
+    registerForm.reset();
+    
+    document.querySelector("#userTable tbody").innerHTML = ""; // Clear table
+
+    showCustomPopup("Logged out successfully. See you soon!", "success");
+	
+	  // 🔴 FIX: Call the new function to detach all listeners
+    detachAllListeners();
+
+  } catch (err) {
+    console.error("❌ Logout failed:", err);
+  }
+});
+
+
+ setTimeout(attachMessageHandlers, 0);
     // Run all setup for the page refresh
     registerOnlineStatus(session.uid);
       // load the rest users
