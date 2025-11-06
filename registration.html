@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -342,6 +343,105 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
 
+///
+// --- Custom Popup System ---
+function showCustomPopup(message, type = "info") {
+  // Remove existing popup if any
+  const existing = document.getElementById("customPopup");
+  if (existing) existing.remove();
+
+  const popup = document.createElement("div");
+  popup.id = "customPopup";
+  
+  Object.assign(popup.style, {
+    position: "fixed",
+    top: "50%",
+    left: "50%",
+    transform: "translate(-50%, -50%)",
+    width: "90%",
+    maxWidth: "320px",
+    background: "rgba(34, 34, 34, 0.95)",
+    backdropFilter: "blur(10px)",
+    border: type === "error" ? "2px solid #ff4444" : "2px solid #0f0",
+    borderRadius: "15px",
+    padding: "25px",
+    boxShadow: "0 0 30px rgba(0, 255, 0, 0.5)",
+    zIndex: 99999,
+    textAlign: "center",
+    color: "#fff",
+    fontFamily: '"Segoe UI", sans-serif'
+  });
+
+  popup.innerHTML = `
+    <div style="
+      color: ${type === "error" ? "#ff4444" : "lime"};
+      font-size: 1.1rem;
+      font-weight: bold;
+      margin-bottom: 15px;
+    ">${type === "error" ? "❌ Error" : "✅ Success"}</div>
+    <div style="
+      color: #fff;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    ">${message}</div>
+    <button id="popupOkBtn" style="
+      background: ${type === "error" ? "#ff4444" : "lime"};
+      color: ${type === "error" ? "#fff" : "#222"};
+      border: none;
+      padding: 10px 30px;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.2s;
+      font-size: 1rem;
+    ">OK</button>
+  `;
+
+ document.body.appendChild(popup);
+
+  const okBtn = document.getElementById("popupOkBtn");
+  
+  // Close function for both mouse and touch
+  const closePopup = () => popup.remove();
+  
+  okBtn.addEventListener("mouseenter", () => {
+    okBtn.style.transform = "scale(1.05)";
+    okBtn.style.opacity = "0.9";
+  });
+  okBtn.addEventListener("mouseleave", () => {
+    okBtn.style.transform = "scale(1)";
+    okBtn.style.opacity = "1";
+  });
+  
+  // Both click and touch events
+  okBtn.addEventListener("click", closePopup);
+  okBtn.addEventListener("touchstart", closePopup, { passive: false });
+
+  // Auto-close after 5 seconds
+  setTimeout(() => {
+    if (popup.parentNode) popup.remove();
+  }, 5000);
+}
+
+// Helper function to convert Firebase errors to friendly messages
+function getFriendlyErrorMessage(firebaseError) {
+  const errorCode = firebaseError.code || "";
+  const errorMap = {
+    "auth/email-already-in-use": "This email is already registered.<br>Please login instead.",
+    "auth/invalid-email": "Please enter a valid email address.",
+    "auth/weak-password": "Password is too weak.<br>Please use at least 6 characters.",
+    "auth/user-not-found": "No account found with this email.",
+    "auth/wrong-password": "Incorrect password. Please try again.",
+    "auth/too-many-requests": "Too many failed attempts.<br>Please try again later.",
+    "auth/network-request-failed": "Network error. Please check your connection.",
+    "auth/invalid-credential": "Invalid email or password.<br>Please try again.",
+    "auth/user-disabled": "This account has been disabled.",
+    "auth/operation-not-allowed": "Operation not allowed.<br>Please contact support."
+  };
+
+  return errorMap[errorCode] || firebaseError.message || "An error occurred. Please try again.";
+}
+///
 	
 onAuthStateChanged(auth, async (user) => {
   if (user) {
@@ -418,11 +518,11 @@ async function registerUser(userName, userEmail, userPassword) {
     await set(ref(db, `users/${uid}`), profile);
     console.log("REGISTER OK:", profile);
 
-    alert("✅ Registered. Now login.");
+    showCustomPopup("Registration successful! Please login now.", "success");
 
   } catch (err) {
     console.error("REGISTER ERROR:", err);
-    alert(err.message);
+    showCustomPopup(getFriendlyErrorMessage(err), "error");
   }
 }
 
@@ -453,7 +553,7 @@ async function loginUser(userEmail, userPassword) {
 	const usersSnap = await get(ref(db, "users"));
     console.log("DEBUG USERS ROOT:", usersSnap.val());
 
-    alert(`✅ Welcome back, ${session.userName}!`);	
+    showCustomPopup(`Welcome back, ${session.userName}!`, "success");
 
     document.getElementById("loginDiv").style.display = "none";
     document.getElementById("result").style.display = "block";
@@ -473,7 +573,7 @@ async function loginUser(userEmail, userPassword) {
 
     return session;
   } catch (err) {
-    alert(`❌ Login failed: ${err.message}`);
+    showCustomPopup(getFriendlyErrorMessage(err), "error");
   } finally {
     loginInProgress = false; // UNLOCK 🔑
   }
@@ -740,7 +840,7 @@ function makeChatDraggable(win) {
     offsetX = touch.clientX - win.offsetLeft;
     offsetY = touch.clientY - win.offsetTop;
     document.body.style.userSelect = "none";
-  });
+  }, { passive: false });
 
   document.addEventListener("touchmove", (e) => {
     if (!dragging) return;
@@ -964,21 +1064,11 @@ loginForm.addEventListener("submit", async (e) => {
         // This is not correct. registerUser doesn't return anything.
         // const reg = await registerUser(name, email, pass);
         await registerUser(name, email, pass);
-        // resultBox.innerHTML = `<p style="color:lime;">Registered UID: ${reg.uid}</p>`;
-        
-        // After registering, just tell them to log in. Don't auto-login.
-        alert("Registration successful. Please log in.");
-        
-        /*
-        // Auto-login logic (removed for clarity)
-        const loggedIn = await loginUser(email, pass);
-        resultBox.innerHTML += `<pre>${JSON.stringify(loggedIn, null, 2)}</pre>`;
-        logoutBtn.style.display = "inline-block";
-        watchUsers();
-        */
-
+       
       } catch (err) {
-        resultBox.innerHTML = `<p style="color:red;">${err.message}</p>`;
+       // resultBox.innerHTML = `<p style="color:red;">${err.message}</p>`;
+	       showCustomPopup(getFriendlyErrorMessage(err), "error");
+
       }
     });
 	
@@ -1061,7 +1151,7 @@ logoutBtn.addEventListener("click", async () => {
     
     document.querySelector("#userTable tbody").innerHTML = ""; // Clear table
 
-    alert("👋 Logged out successfully.");
+    showCustomPopup("Logged out successfully. See you soon!", "success");
 	
 	  // 🔴 FIX: Call the new function to detach all listeners
     detachAllListeners();
@@ -1093,7 +1183,7 @@ async function adminBatchOverride(uid, changes) {
     const userRef = ref(db, `users/${uid}`);
     await update(userRef, changes);
     console.log("✅ Admin batch update:", changes);
-    alert(`✅ Updated user ${uid} with: ${JSON.stringify(changes)}`);
+    showCustomPopup(`✅ Updated user ${uid} with: ${JSON.stringify(changes)}`, "error");
   } catch (err) {
     console.error("❌ Batch update failed:", err);
   }
@@ -1158,10 +1248,12 @@ function setOffline() {
    🧩 FLOATING CHAT WINDOWS
 ---------------------------- */
 function showChatWindow(senderUid, senderName, currentUser) {
-  // already open? bring to front
+// already open? bring to front
   if (openChatWindows[senderUid]) {
     const win = openChatWindows[senderUid];
-    win.style.zIndex = 10000 + Object.keys(openChatWindows).length;
+    const allWindows = Object.values(openChatWindows);
+    const maxZ = Math.max(...allWindows.map(w => parseInt(w.style.zIndex) || 0));
+    win.style.zIndex = maxZ + 1;
     win.style.display = "flex";
     return win;
   }
@@ -1272,12 +1364,22 @@ function showChatWindow(senderUid, senderName, currentUser) {
 
   container.appendChild(chatWin);
   openChatWindows[senderUid] = chatWin;
+  
+  // 👆 Bring window to front when clicked/tapped anywhere on it
+const bringToFront = () => {
+  const allWindows = Object.values(openChatWindows);
+  const maxZ = Math.max(...allWindows.map(w => parseInt(w.style.zIndex) || 0));
+  chatWin.style.zIndex = maxZ + 1;
+};
+
+chatWin.addEventListener("mousedown", bringToFront);
+chatWin.addEventListener("touchstart", bringToFront, { passive: false });
 
 const closeBtn = chatWin.querySelector(".chatClose");
 
 // hover effect (desktop)
 closeBtn.addEventListener("mouseenter", () => closeBtn.style.opacity = "1");
-closeBtn.addEventListener("mouseleave", () => closeBtn.style.opacity = "0.7");
+closeBtn.addEventListener("mouseleave", () => closeBtn.style.opacity = "0.7", { passive: false });
 
 // click & touch
 const closeHandler = () => {
@@ -1524,7 +1626,7 @@ function attachDirectChatSendHandler(receiverUid) {
   btn.addEventListener('click', async (e) => {
     const txt = input.value && input.value.trim();
     if (!txt) return;
-    const me = auth.currentUser; if(!me) return alert('Not logged in');
+    const me = auth.currentUser; if(!me) return showCustomPopup('Not logged in!', "error");
     await sendDirectMessage(me.uid, receiverUid, txt);
     input.value = '';
     const msgContainer = document.querySelector(`#chat-${receiverUid}`);
