@@ -15,6 +15,7 @@
       flex-direction: column;
       align-items: center;
       min-height: 100vh;
+      padding-top: 60px; /* Added padding to center the card visually */
     }
 
     h1 {
@@ -199,8 +200,7 @@
   </style>
 </head>
 <body>
-  <h1>Domino User Portal</h1>
-<div id="msgPopup" style="
+  <div id="msgPopup" style="
   position: fixed;
   bottom: 20px;
   right: 20px;
@@ -264,10 +264,6 @@
 </form>
 
   </div>
-
-  <button id="logoutBtn" style="display:none;">Logout</button>
-
-  <div id="result"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/js-sha256@0.11.0/build/sha256.min.js"></script>
 
@@ -431,14 +427,7 @@ onAuthStateChanged(auth, async (user) => {
 	
     const session = JSON.parse(localStorage.getItem("loggedUser"));
     if (session && session.uid === user.uid) {
-     /* document.getElementById("loginDiv").style.display = "none";
-      document.getElementById("result").style.display = "block";
-      document.getElementById("logoutBtn").style.display = "inline-block";
-      // document.getElementById("userTable").style.display = "none"; // <-- REMOVED
-      document.getElementById("result").innerHTML = `
-        <p style="color:lime;">✅ Session restored for <b>${session.userName}</b></p>
-        <pre>${JSON.stringify(session, null, 2)}</pre>
-      `;*/
+     /* UI display logic REMOVED */
 	  
 	  setTimeout(() => {
     window.location.href = "domino.html";
@@ -452,10 +441,8 @@ onAuthStateChanged(auth, async (user) => {
     detachAllListeners();
 
     // Hide UI
-    // document.getElementById("userTable").style.display = "none"; // <-- REMOVED
     document.getElementById("loginDiv").style.display = "block";
-    document.getElementById("result").style.display = "none";
-    document.getElementById("logoutBtn").style.display = "none";
+    // result and logoutBtn lines REMOVED
   }
 });
 
@@ -537,15 +524,7 @@ async function loginUser(userEmail, userPassword) {
 
     //showCustomPopup(`Welcome back, ${session.userName}!`, "success");
 
-    document.getElementById("loginDiv").style.display = "none";
-    document.getElementById("result").style.display = "block";
-    document.getElementById("logoutBtn").style.display = "inline-block";
-    // document.getElementById("userTable").style.display = "none"; // <-- REMOVED
-
-    document.getElementById("result").innerHTML = `
-      <p style="color:lime;">✅ Logged in as <b>${session.userName}</b></p>
-      <pre>${JSON.stringify(session, null, 2)}</pre>
-    `;
+    // All UI display logic (loginDiv, result, logoutBtn) REMOVED
 
     // These calls are correct and are now protected by the lock
     // watchUsers(); // <-- REMOVED
@@ -931,8 +910,7 @@ async function sendChatMessage(targetUid, targetName, currentUser, input) {
 
 
 ///
-    const resultBox = document.getElementById("result");
-    const logoutBtn = document.getElementById("logoutBtn");
+    // Variable declarations for resultBox and logoutBtn REMOVED
     const loginForm = document.getElementById("loginForm");
     const registerForm = document.getElementById("registerForm");
 
@@ -943,8 +921,10 @@ loginForm.addEventListener("submit", async (e) => {
   try {
     await loginUser(email, pass);
   } catch (err) {
-    resultBox.innerHTML = `<p style="color:red;">${err.message}</p>`;
-    resultBox.style.display = "block";
+    // This catch block might not be reachable if loginUser handles its own errors
+    // but it's harmless to keep.
+    console.error("Login submission error:", err);
+    showCustomPopup(getFriendlyErrorMessage(err), "error");
   }
 });
 
@@ -1016,43 +996,7 @@ regPass2.addEventListener("input", checkPasswordMatch);
     });
 	
 	
-// ✅ --- NEW LOGOUT HANDLER --- ✅
-logoutBtn.addEventListener("click", async () => {
-  try {
-    const user = auth.currentUser;
-    if (user) {
-      await update(ref(db, `users/${user.uid}`), {
-        isOnline: false,
-        lastLogoutAt: Date.now()
-      });
-    }
-	
-	off(ref(db, `messages/direct/${user.uid}`));
-    await signOut(auth); // This will trigger onAuthStateChanged
-    localStorage.removeItem("loggedUser");
-    
-  
-    Object.values(openChatWindows).forEach(w => w.remove());
-    openChatWindows = {};
-
-    // document.getElementById("userTable").style.display = "none"; // <-- REMOVED
-    document.getElementById("loginDiv").style.display = "block";
-    document.getElementById("result").style.display = "none";
-    document.getElementById("logoutBtn").style.display = "none";
-    loginForm.reset();
-    registerForm.reset();
-    
-    // document.querySelector("#userTable tbody").innerHTML = ""; // <-- REMOVED
-
-    showCustomPopup("Logged out successfully. See you soon!", "success");
-	
-	  // 🔴 FIX: Call the new function to detach all listeners
-    detachAllListeners();
-
-  } catch (err) {
-    console.error("❌ Logout failed:", err);
-  }
-});
+// logoutBtn.addEventListener("click", ...) REMOVED
 
 // ✅ --- NEW HELPER FUNCTION --- ✅
 // Central place to detach all active listeners
