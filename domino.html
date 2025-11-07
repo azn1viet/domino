@@ -1781,7 +1781,7 @@ async function watchUsers() {
       el.dataset.uid = uid;
       el.style.cursor = "pointer";
 	  el.style.padding = "2px";
-      el.innerHTML = `<span>${crown} ${u.userName}</span>`;
+      el.innerHTML = `<span style="text-wrap:nowrap;overflow:hidden;">${crown} ${u.userName}</span>`;
 	  
       
       // ✅ FIX: Attach click handler immediately when creating element
@@ -2573,8 +2573,10 @@ function startListeningPublicChat() {
     // This is a new message, add it
     const currentUser = JSON.parse(localStorage.getItem("loggedUser"));
 // ✅ NEW CODE: Only check if currentUser data is missing before returning
-    if (!currentUser) return; 
+   if (!currentUser) return; 
 
+  // if (!currentUser || (msg.senderUid === currentUser.uid && !msg.fromName)) return;
+   
     const msgDiv = document.createElement('div');
     msgDiv.className = 'msg-user';
 
@@ -2888,14 +2890,15 @@ if (chatInput && sendButton) {
     sendButton.classList.remove('active');
 
     // ✅ Add message to the message list (UI feedback)
-    const messageList = document.getElementById('message-list');
+	//keep this as this just not inserting own message to server caused duplicated
+ /*   const messageList = document.getElementById('message-list');
     if (messageList) {
       const msgDiv = document.createElement('div');
       msgDiv.className = 'msg-user';
       msgDiv.innerHTML = `<span>${currentUser.userName}</span> ${messageText}`;
       messageList.appendChild(msgDiv);
       messageList.scrollTop = messageList.scrollHeight;
-    }
+    }*/
 
     // ✅ Send to Firebase using sendPublicMessage (already defined in your code)
     try {
