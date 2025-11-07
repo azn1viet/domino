@@ -1343,7 +1343,13 @@ color: #0f0;
   z-index: 9999;
   font-size: 0.9rem;
 }
+.msgBtn span {
+  color: white;
+}
 
+.msgBtn:hover span {
+  color: lime;
+}
 
 @media (min-width: 700px) {
   #handlayout, #table {left: calc(50% - 160px);}
@@ -1453,7 +1459,7 @@ color: #0f0;
       </select>
     </label>
   </div>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.4.8</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.5.0</div>
   <div  id="betDiv">
   <select id="bets">
   <option value="1000">$1,000</option>
@@ -1774,7 +1780,9 @@ async function watchUsers() {
       el.className = "msgBtn";
       el.dataset.uid = uid;
       el.style.cursor = "pointer";
-      el.innerHTML = `<span style="color:white;">${crown} ${u.userName}</span>`;
+	  el.style.padding = "2px";
+      el.innerHTML = `<span>${crown} ${u.userName}</span>`;
+	  
       
       // ✅ FIX: Attach click handler immediately when creating element
       el.onclick = async () => {
