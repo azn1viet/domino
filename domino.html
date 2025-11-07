@@ -3810,7 +3810,10 @@ function saveQ(force = false) {
   
   // Fast: just save, no cleaning
   if (force || saveCounter % 100 === 0) {
-    localStorage.setItem(LS_KEY, JSON.stringify(Q));
+    // ✅ FIX: Merge with existing base data to preserve pre-trained knowledge
+    const baseData = JSON.parse(localStorage.getItem(LOCAL_BASE_KEY) || "{}");
+    const merged = { ...baseData, ...Q }; // User learning overrides base
+    localStorage.setItem(LS_KEY, JSON.stringify(merged));
   }
 }
 ///  
