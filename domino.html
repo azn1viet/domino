@@ -1450,7 +1450,7 @@ color: #0f0;
       </select>
     </label>
   </div>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.4.6</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.4.7</div>
   <div  id="betDiv">
   <select id="bets">
   <option value="1000">$1,000</option>
@@ -5094,7 +5094,17 @@ function handleTileClick(gameState, tileIndex, playButtons) {
 function playTile(gameState, tile, end) {
   const { players, board, roundHistory, isThisFirstGame, playerOrder, boneyard } = gameState;
   const playerHand = players[currentActivePlayerTurn];
-  const tileIndex = playerHand.findIndex(t => t.top === tile.top && t.bottom === tile.bottom);
+  
+  // ✅ FIX: Add safety check for tile parameter
+  if (!tile || typeof tile !== 'object' || tile.top === undefined || tile.bottom === undefined) {
+    console.error("❌ Invalid tile passed to playTile:", tile);
+    if (!window.trainingMode) {
+      renderGame(gameState);
+    }
+    return false;
+  }
+  
+  const tileIndex = playerHand.findIndex(t => t && t.top === tile.top && t.bottom === tile.bottom);
 
   if (tileIndex === -1 || !canPlayTile(tile, board)) {
     console.warn("Invalid move attempt:", tile, "on board:", board.leftEnd?.value, board.rightEnd?.value);
@@ -5682,7 +5692,7 @@ newGameBtn.onclick = () => {
   const popup = document.getElementById('safe-alert');
   if (popup) {
     popup.remove();
-    console.log("🧹 Removed safe-alert popup before starting new game");
+    //console.log("🧹 Removed safe-alert popup before starting new game");
   }
 
   // 🎧 Initialize sound (resume audio context)
@@ -6428,6 +6438,7 @@ function showAIloading() {
     div.style.position = "absolute";
     div.style.left = "50%";
     div.style.top = "50%";
+	div.style.whiteSpace = "nowrap";
     div.style.transform = "translate(-50%, -50%)";
     div.style.fontSize = "20px";
     div.style.color = "lime";
