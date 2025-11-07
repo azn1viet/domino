@@ -1238,6 +1238,9 @@ color: #0f0;
   font-size: 14px;
   outline: none;
   transition: border 0.2s, background 0.2s;
+  pointer-events: auto; /* ✅ Enable input interaction */
+  user-select: text; /* ✅ Allow text selection */
+  -webkit-user-select: text;
 }
 
 .chat-input-bar input:focus {
@@ -1260,8 +1263,8 @@ color: #0f0;
   transition: background 0.25s, color 0.25s, transform 0.15s;
 }
 .composer-submit-btn .icon {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
 }
 .composer-submit-btn:hover:not(:disabled) {
   background: #0f0;
@@ -1450,7 +1453,7 @@ color: #0f0;
       </select>
     </label>
   </div>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.4.7</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.4.8</div>
   <div  id="betDiv">
   <select id="bets">
   <option value="1000">$1,000</option>
@@ -1489,9 +1492,12 @@ import {
   update,
   onValue,
   onChildAdded,
+  onChildRemoved,
   onDisconnect,
   remove,
-  off // <-- Import 'off' to detach listeners
+  off,
+  query,
+  limitToLast
 } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
 
 // --- Global State Variables ---
@@ -2504,7 +2510,7 @@ async function sendDirectMessage(senderUid, receiverUid, text) {
 }
 
 // 2) Table message - online only (no delivered flags)
-async function sendTableMessage(gameName, tableName, senderUid, text) {
+async function sendTableMessage(gameName, tableName, senderUid, senderName, text) {
   // This function is not called
   if (!text) return;
   const base = ref(db, `messages/table/${gameName}/${tableName}`);
@@ -2512,6 +2518,7 @@ async function sendTableMessage(gameName, tableName, senderUid, text) {
   const payload = {
     text,
     senderUid,
+	senderName,
     sentAt: Date.now()
   };
   await set(msgRef, payload);
@@ -2519,7 +2526,7 @@ async function sendTableMessage(gameName, tableName, senderUid, text) {
 }
 
 // 3) Public message - online lobby
-async function sendPublicMessage(senderUid, text) {
+async function sendPublicMessage(senderUid, senderName, text) {
   // This function is not called
   if (!text) return;
   const base = ref(db, `messages/public`);
@@ -2527,11 +2534,104 @@ async function sendPublicMessage(senderUid, text) {
   const payload = {
     text,
     senderUid,
+	senderName, // <-- ADDED
     sentAt: Date.now()
   };
   await set(msgRef, payload);
   return msgRef.key;
 }
+///
+// === Listen for Public Chat Messages ===
+let publicChatListenerAttached = false;
+
+function startListeningPublicChat() {
+  if (publicChatListenerAttached) return; // Already listening
+  publicChatListenerAttached = true;
+
+  if (typeof listenPublicMessages === 'function') {
+  listenPublicMessages((msg, key, isRemoval = false) => {
+    const messageList = document.getElementById('message-list');
+    if (!messageList) return;
+
+    if (isRemoval) {
+      // Find the message by its key and remove it
+      const oldMsgDiv = messageList.querySelector(`[data-msg-key="${key}"]`);
+      if (oldMsgDiv) {
+        oldMsgDiv.remove();
+      }
+      return;
+    }
+
+    // This is a new message, add it
+    const currentUser = JSON.parse(localStorage.getItem("loggedUser"));
+// ✅ NEW CODE: Only check if currentUser data is missing before returning
+    if (!currentUser) return; 
+
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'msg-user';
+
+    // OPTIONAL: Add a class to make your OWN messages look different (e.g., align right)
+    if (msg.senderUid === currentUser.uid) {
+        msgDiv.classList.add('msg-self');
+    }
+
+    msgDiv.dataset.msgKey = key; 
+    msgDiv.innerHTML = `<span>${msg.fromName || msg.senderName || 'User'}</span> ${msg.text}`;
+    messageList.appendChild(msgDiv);
+    messageList.scrollTop = messageList.scrollHeight;
+  });
+  console.log("👂 Listening for public chat (last 50 messages)");
+}
+}
+
+// Start listening when drawer opens or on page load if logged in
+const currentUser = JSON.parse(localStorage.getItem("loggedUser"));
+if (currentUser) {
+  setTimeout(() => startListeningPublicChat(), 1000);
+}
+///
+async function pruneMessagesToLatest50(chatPath) {
+  // chatPath example: 'messages/broadcast' for public, or 'messages/tables/domino/tableId' for table
+  const messagesRef = ref(db, chatPath);
+  
+  // Get all messages ordered by sentAt ascending
+  const allQuery = query(messagesRef, orderByChild('sentAt'));
+  const snapshot = await get(allQuery);
+  
+  if (!snapshot.exists()) return; // No messages
+  
+  const messages = [];
+  snapshot.forEach(child => {
+    messages.push({
+      key: child.key,
+      ...child.val()
+    });
+  });
+  
+  // Sort by sentAt descending (latest first)
+  messages.sort((a, b) => b.sentAt - a.sentAt);
+  
+  // If 50 or fewer, nothing to prune
+  if (messages.length <= 50) return;
+  
+  // Messages to delete: from index 50 onwards (older ones)
+  const toDelete = messages.slice(50);
+  
+  // Delete them
+  for (const msg of toDelete) {
+    await remove(ref(db, `${chatPath}/${msg.key}`));
+  }
+  
+  console.log(`Pruned ${toDelete.length} old messages. Kept 50 latest.`);
+}
+
+// Usage examples:
+// For public chat:
+// pruneMessagesToLatest50('messages/broadcast');
+
+// For table chat:
+// pruneMessagesToLatest50(`messages/tables/domino/${tableId}`);
+///
 
 // ---------- Receiving / listener logic (Zalo style sequential B) ----------
 // All this logic is part of an abandoned implementation and is not used.
@@ -2701,18 +2801,37 @@ function listenForIncomingDirectMessages(myUid) {
 function listenTableMessages(gameName, tableName, onMsgCallback) {
   // This function is not called
   const base = ref(db, `messages/table/${gameName}/${tableName}`);
+    // Create a query that only gets the last 50 messages
+  const tableChatQuery = query(base, limitToLast(50));
+  
   onChildAdded(base, (snap) => {
     const m = snap.val();
-    onMsgCallback && onMsgCallback(m);
+        // Pass the snapshot key so we can find the message in the UI
+    onMsgCallback && onMsgCallback(m, snap.key, false); // (message, key, isRemoval)
+  });
+    // Listen for old messages being removed from the query
+  onChildRemoved(tableChatQuery, (snap) => {
+    // Pass the key and a removal flag to the callback
+    onMsgCallback && onMsgCallback(null, snap.key, true); // (message, key, isRemoval)
   });
 }
 
 function listenPublicMessages(onMsgCallback) {
-  // This function is not called
   const base = ref(db, `messages/public`);
-  onChildAdded(base, (snap) => {
+  // Create a query that only gets the last 50 messages
+  const publicChatQuery = query(base, limitToLast(50));
+
+  // Listen for new messages being added
+  onChildAdded(publicChatQuery, (snap) => {
     const m = snap.val();
-    onMsgCallback && onMsgCallback(m);
+    // Pass the snapshot key so we can find the message in the UI
+    onMsgCallback && onMsgCallback(m, snap.key, false); // (message, key, isRemoval)
+  });
+
+  // Listen for old messages being removed from the query
+  onChildRemoved(publicChatQuery, (snap) => {
+    // Pass the key and a removal flag to the callback
+    onMsgCallback && onMsgCallback(null, snap.key, true); // (message, key, isRemoval)
   });
 }
 
@@ -2724,7 +2843,80 @@ async function markMessageDeliveredFor(receiverUid, senderUid, msgId) {
   });
 }
 
-// ---------- End of m
+///
+
+///
+// === Chat Input Functionality ===
+const chatInput = document.getElementById('chat-input');
+const sendButton = document.getElementById('composer-submit-button');
+
+if (chatInput && sendButton) {
+  // Enable/disable send button based on input
+  chatInput.addEventListener('input', () => {
+    const hasText = chatInput.value.trim().length > 0;
+    sendButton.disabled = !hasText;
+    sendButton.classList.toggle('active', hasText);
+  });
+
+  // Send message function
+  const sendChatMessage = async () => {
+    const text = chatInput.value.trim();
+    if (!text) return;
+
+    const currentUser = JSON.parse(localStorage.getItem("loggedUser"));
+    if (!currentUser) {
+      const popup = document.createElement('div');
+      popup.textContent = "Please log in to chat";
+      popup.style.cssText = 'position:fixed;bottom:80px;right:20px;background:#f44;color:#fff;padding:10px 15px;border-radius:8px;z-index:9999;';
+      document.body.appendChild(popup);
+      setTimeout(() => popup.remove(), 3000);
+      return;
+    }
+
+    // Clear input immediately for better UX
+    const messageText = text;
+    chatInput.value = '';
+    sendButton.disabled = true;
+    sendButton.classList.remove('active');
+
+    // ✅ Add message to the message list (UI feedback)
+    const messageList = document.getElementById('message-list');
+    if (messageList) {
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'msg-user';
+      msgDiv.innerHTML = `<span>${currentUser.userName}</span> ${messageText}`;
+      messageList.appendChild(msgDiv);
+      messageList.scrollTop = messageList.scrollHeight;
+    }
+
+    // ✅ Send to Firebase using sendPublicMessage (already defined in your code)
+    try {
+      if (typeof sendPublicMessage === 'function') {
+			await sendPublicMessage(currentUser.uid, currentUser.userName, messageText); 
+			console.log("✅ Message sent to Firebase:", messageText);
+      } else {
+        console.error("❌ sendPublicMessage function not found");
+      }
+    } catch (err) {
+      console.error("❌ Failed to send message:", err);
+    }
+  };
+
+  // Click send button
+  sendButton.addEventListener('click', sendChatMessage);
+
+  // Press Enter to send
+  chatInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendChatMessage();
+    }
+  });
+}
+///
+
+// ---------- End of module
+
 
 ///
 
@@ -6512,24 +6704,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     <div id="message-list">
       <div class="msg-server"><span>[Server]</span> Welcome to the game lobby!</div>
       <div class="msg-server"><span>[Server]</span> Game: Domino. Room: Common.</div>
-      <div class="msg-user"><span>User 'Player_123'</span> has joined Table #1.</div>
-      <div class="msg-game"><span>[Game]</span> Table #1: 'Player_456' won $10,000.</div>
-      <div class="msg-user"><span>User 'Guest_789'</span> has left Table #2.</div>
-      <div class="msg-server"><span>[Server]</span> Tip: You can create a new table in the 'New' tab.</div>
-      <div class="msg-user"><span>User 'DominoPro'</span> has joined Table #1.</div>
-      <div class="msg-game"><span>[Game]</span> Table #2: 'Player_123' won $5,000.</div>
-      <div class="msg-server"><span>[Server]</span> 'Tiến Lên' is now available!</div>
-      <div class="msg-user"><span>User 'Newbie'</span> has created Table #5.</div>
-	  <div class="msg-server"><span>[Server]</span> Welcome to the game lobby!</div>
-      <div class="msg-server"><span>[Server]</span> Game: Domino. Room: Common.</div>
-      <div class="msg-user"><span>User 'Player_123'</span> has joined Table #1.</div>
-      <div class="msg-game"><span>[Game]</span> Table #1: 'Player_456' won $10,000.</div>
-      <div class="msg-user"><span>User 'Guest_789'</span> has left Table #2.</div>
-      <div class="msg-server"><span>[Server]</span> Tip: You can create a new table in the 'New' tab.</div>
-      <div class="msg-user"><span>User 'DominoPro'</span> has joined Table #1.</div>
-      <div class="msg-game"><span>[Game]</span> Table #2: 'Player_123' won $5,000.</div>
-      <div class="msg-server"><span>[Server]</span> 'Tiến Lên' is now available!</div>
-      <div class="msg-user"><span>User 'Newbie'</span> has created Table #5.</div>
     </div>
 	<div id="message-list-users"><div id="message-list-user"></div><div id="userListContainer"></div></div>
   </div>
@@ -6688,6 +6862,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 </div>
 <script>
 // === Network Drawer Logic ===
+
 document.addEventListener('DOMContentLoaded', () => {
   const networkBtn = document.getElementById('network-btn');
   const closeDrawerBtn = document.getElementById('close-drawer');
