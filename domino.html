@@ -1074,7 +1074,7 @@ background: none;
   left: 0;
   top: 35px; /* Height of drawer-header-text */
   bottom: 100px;
-  width: 75%;
+  width: 100%;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 5px;
@@ -1090,18 +1090,20 @@ background: none;
   position: absolute;
   right: 0;
   top: 35px; /* Height of drawer-header-text */
-  bottom: 100px;
-  width: 25%;
   overflow-x: hidden;
   overflow-y: auto;
+  width: 40%;
+  height: auto;
+  background: rgba(26, 26, 26, .7);
   padding: 5px;
   box-sizing: border-box;
   font-size: 12px;
-  z-index: 1;
+  z-index: 9999;
   line-height: 1.5;
  /* Thin scrollbar styling */
   scrollbar-width: thin; /* Firefox */
   scrollbar-color: rgba(255, 255, 255, 0.3) transparent; /* Firefox: thumb track */
+  border-radius: 0 0 0 8px;
 }
 
 /* Webkit browsers (Chrome, Safari, Edge) */
@@ -1356,6 +1358,39 @@ color: #0f0;
   pointer-events: none;
   pointer-events: none;
 }
+#message-list-users {
+  transition: opacity 0.25s, transform 0.25s;
+}
+#message-list-users.hidden {
+  opacity: 0;
+  transform: translateX(20px);
+  pointer-events: none;
+}
+.close-user-btn {
+  background: none;   /* remove default button bg */
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.close-user-btn svg {
+  display: block;    /* prevent extra spacing around SVG */
+}
+
+#reopen-user {
+position: absolute;
+top: 40px;
+right: 0;
+  z-index: 10000;
+  background: #333;
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  padding: 2px 5px;
+}
 
 @media (min-width: 700px) {
   #handlayout, #table {left: calc(50% - 160px);}
@@ -1465,7 +1500,7 @@ color: #0f0;
       </select>
     </label>
   </div>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.5.2</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.5.3</div>
   <div  id="betDiv">
   <select id="bets">
   <option value="1000">$1,000</option>
@@ -1479,11 +1514,82 @@ color: #0f0;
    </div>
  </div>
  <script>
-// Additional: Ensure bets is enabled initially (before first game start)
 document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('bets').disabled = false; // Enabled before any game starts
-});
+  const messageList = document.getElementById('message-list-users');
+  const reopenBtn = document.getElementById('reopen-user');
+  const betsButton = document.getElementById('bets');
 
+  if (betsButton) {
+    betsButton.disabled = false;
+  }
+
+ // --- Functions ---
+
+const closeMessageList = (e) => {
+  // Check if the click/tap was actually on the close button
+  if (e.target.closest('#close-user')) {
+    
+    // 1. Hide the list
+    if (messageList) {
+     messageList.classList.add('hidden'); // <-- KEY CHANGE
+    }
+    
+    // 2. Show the reopen button
+    if (reopenBtn) { // <-- This check was (if messageList) before
+      reopenBtn.style.display = 'block';
+      reopenBtn.style.cursor = 'pointer';
+    }
+    return true; // Tell the touch listener we closed it
+  }
+  return false; // Tell the touch listener we did nothing
+};
+
+
+const openMessageList = () => {
+
+  // 1. Hide the reopen button (This was the missing line)
+  if (reopenBtn) {
+    reopenBtn.style.display = 'none';
+  }  
+    // 2. Show the list
+  if (messageList) {
+messageList.classList.remove('hidden'); // <-- KEY CHANGE
+  }
+};
+
+
+// --- Event Listeners (From our previous conversation) ---
+
+if (messageList) {
+  messageList.addEventListener('click', closeMessageList);
+  messageList.addEventListener('touchstart', (e) => {
+    const didClose = closeMessageList(e);
+    if (didClose) {
+      e.preventDefault(); // Stop ghost click
+    }
+  });
+}
+
+if (reopenBtn) {
+  reopenBtn.addEventListener('click', openMessageList);
+  reopenBtn.addEventListener('touchstart', (e) => {
+    openMessageList();
+    e.preventDefault(); // Stop ghost click
+  });
+}
+
+  if (messageList) {
+    messageList.addEventListener('click', closeMessageList);
+    messageList.addEventListener('touchstart', closeMessageList);
+	e.preventDefault(); // Prevent the ghost click
+  }
+
+  if (reopenBtn) {
+    reopenBtn.addEventListener('click', openMessageList);
+    reopenBtn.addEventListener('touchstart', openMessageList);
+	e.preventDefault(); // Prevent the ghost click
+  }
+});
 </script>
 <script type="module">
 import { auth, db } from "./firebase.js";
@@ -1647,7 +1753,13 @@ const header = document.getElementById("message-list-user");
 
 // build DOM manually
 header.innerHTML = `
-  <span><strong>${session.userName}</strong></span><br>
+  <span><strong>${session.userName}</strong><button id="close-user" class="close-user-btn" style="float:right;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2">
+          <polyline points="13 17 18 12 13 7"></polyline>
+          <polyline points="6 17 11 12 6 7"></polyline>
+        </svg>
+      </button></span>
+<br>
   <span class="logoutBtn" style="float:right; cursor:pointer;">↩️ Log out</span><br><br>
 `;
 header.querySelector(".logoutBtn").addEventListener("click", async () => {
@@ -3005,6 +3117,333 @@ let scores = [10000000, 10000000, 10000000, 10000000];
 ///
 let isOverallFirstGame = true;
 let isTrueFirstGame = true; // ⭐ NEW: Track if it's the very first game ever
+///
+///Networking for games
+// ====================================
+// STEP 1: SEAT DATA STRUCTURE & TABLE CONFIG
+// ====================================
+
+// Global variables for seat management
+let currentTable = null;
+let myAbsoluteSeatedIndex = null; // null when not seated, 0-3 when seated
+let myVisualIndex = null; // always 0 (South) when seated
+let seats = []; // Array of 4 seat objects
+
+// Initialize seat structure
+function initializeSeatStructure() {
+  seats = [
+    {
+      seatIndex: 0,
+      occupantType: 'empty', // 'empty', 'bot', 'human'
+      occupantId: null,
+      displayName: '[Seat 1]',
+      score: null,
+      connectionStatus: 'disconnected',
+      disconnectTimer: null
+    },
+    {
+      seatIndex: 1,
+      occupantType: 'empty',
+      occupantId: null,
+      displayName: '[Seat 2]',
+      score: null,
+      connectionStatus: 'disconnected',
+      disconnectTimer: null
+    },
+    {
+      seatIndex: 2,
+      occupantType: 'empty',
+      occupantId: null,
+      displayName: '[Seat 3]',
+      score: null,
+      connectionStatus: 'disconnected',
+      disconnectTimer: null
+    },
+    {
+      seatIndex: 3,
+      occupantType: 'empty',
+      occupantId: null,
+      displayName: '[Seat 4]',
+      score: null,
+      connectionStatus: 'disconnected',
+      disconnectTimer: null
+    }
+  ];
+}
+
+// Initialize Common Table 0 configuration
+function initializeCommonTable() {
+  currentTable = {
+    tableId: 'table_0',
+    tableName: 'Common Room',
+    game: 'domino',
+    config: {
+      maxSeats: 4,
+      botsEnabled: true,
+      botCount: 2,
+      bet: 10000,
+      isPrivate: false,
+      isCommonTable: true,
+      password: null
+    }
+  };
+
+  // Initialize seats
+  initializeSeatStructure();
+
+  // Seat AI Bot 1 at Seat 0 (South)
+  seats[0] = {
+    seatIndex: 0,
+    occupantType: 'bot',
+    occupantId: 'bot_table0_0',
+    displayName: 'AI Bot 1',
+    score: 10000000, // Will be loaded from Firebase
+    connectionStatus: 'connected',
+    disconnectTimer: null
+  };
+
+  // Seat AI Bot 2 at Seat 2 (North)
+  seats[2] = {
+    seatIndex: 2,
+    occupantType: 'bot',
+    occupantId: 'bot_table0_2',
+    displayName: 'AI Bot 2',
+    score: 10000000, // Will be loaded from Firebase
+    connectionStatus: 'connected',
+    disconnectTimer: null
+  };
+
+  // Seats 1 & 3 remain empty for human players
+  console.log('✅ Common Table 0 initialized:', currentTable);
+  console.log('✅ Seats initialized:', seats);
+}
+
+// Helper: Get active seat indices based on maxSeats config
+function getActiveSeatIndices(maxSeats) {
+  if (maxSeats === 2) return [0, 2]; // South, North only
+  if (maxSeats === 3) return [0, 1, 2]; // South, East, North only
+  return [0, 1, 2, 3]; // All seats
+}
+
+// Helper: Check if a seat is active (visible) in current table
+function isSeatActive(absoluteIndex) {
+  if (!currentTable) return false;
+  const activeSeats = getActiveSeatIndices(currentTable.config.maxSeats);
+  return activeSeats.includes(absoluteIndex);
+}
+
+// Helper: Check if a seat is occupied
+function isSeatOccupied(absoluteIndex) {
+  return seats[absoluteIndex].occupantType !== 'empty';
+}
+
+// Helper: Check if a seat has a bot
+function isBot(absoluteIndex) {
+  return seats[absoluteIndex].occupantType === 'bot';
+}
+
+// Helper: Check if a seat has a human
+function isHuman(absoluteIndex) {
+  return seats[absoluteIndex].occupantType === 'human';
+}
+
+// Helper: Get all human-occupied seat indices
+function getHumanSeats() {
+  return seats
+    .map((seat, index) => seat.occupantType === 'human' ? index : null)
+    .filter(index => index !== null);
+}
+
+// Helper: Get all bot-occupied seat indices
+function getBotSeats() {
+  return seats
+    .map((seat, index) => seat.occupantType === 'bot' ? index : null)
+    .filter(index => index !== null);
+}
+
+// Helper: Get next available empty seat (for auto-joining)
+function getNextEmptySeat() {
+  if (!currentTable) return null;
+  const activeSeats = getActiveSeatIndices(currentTable.config.maxSeats);
+  
+  for (let i = 0; i < activeSeats.length; i++) {
+    const seatIndex = activeSeats[i];
+    if (!isSeatOccupied(seatIndex)) {
+      return seatIndex;
+    }
+  }
+  return null; // No empty seats
+}
+
+// Create a user table configuration (for Step 11, but defining structure now)
+function createTableConfig(tableName, game, maxSeats, botsEnabled, bet, isPrivate, password) {
+  const tableId = 'table_' + Date.now(); // Simple ID generation
+  
+  const config = {
+    tableId: tableId,
+    tableName: tableName,
+    game: game,
+    config: {
+      maxSeats: maxSeats,
+      botsEnabled: botsEnabled,
+      botCount: botsEnabled ? (maxSeats - 1) : 0,
+      bet: bet,
+      isPrivate: isPrivate,
+      isCommonTable: false,
+      password: isPrivate ? password : null
+    }
+  };
+
+  return config;
+}
+
+// Load a table configuration and initialize seats
+function loadTable(tableConfig) {
+  currentTable = tableConfig;
+  
+  // Reset all seats
+  initializeSeatStructure();
+  
+  // If bots enabled, populate bot seats
+  if (tableConfig.config.botsEnabled) {
+    const activeSeats = getActiveSeatIndices(tableConfig.config.maxSeats);
+    const botCount = tableConfig.config.botCount;
+    
+    // Place bots starting from Seat 1 (leave Seat 0 for human creator)
+    let botsPlaced = 0;
+    for (let i = 1; i < activeSeats.length && botsPlaced < botCount; i++) {
+      const seatIndex = activeSeats[i];
+      seats[seatIndex] = {
+        seatIndex: seatIndex,
+        occupantType: 'bot',
+        occupantId: `bot_${tableConfig.tableId}_${seatIndex}`,
+        displayName: `AI Bot ${seatIndex + 1}`,
+        score: 10000000, // Will be loaded from Firebase
+        connectionStatus: 'connected',
+        disconnectTimer: null
+      };
+      botsPlaced++;
+    }
+  }
+  
+  console.log(`✅ Table ${tableConfig.tableId} loaded:`, currentTable);
+  console.log('✅ Seats initialized:', seats);
+}
+
+// Seat a player at a specific seat (called when player clicks empty seat)
+function seatPlayer(absoluteSeatIndex, userId, userName, userScore) {
+  if (!isSeatActive(absoluteSeatIndex)) {
+    console.error('❌ Seat', absoluteSeatIndex, 'is not active in this table');
+    return false;
+  }
+  
+  if (isSeatOccupied(absoluteSeatIndex)) {
+    console.error('❌ Seat', absoluteSeatIndex, 'is already occupied');
+    return false;
+  }
+  
+  // Seat the player
+  seats[absoluteSeatIndex] = {
+    seatIndex: absoluteSeatIndex,
+    occupantType: 'human',
+    occupantId: userId,
+    displayName: userName,
+    score: userScore,
+    connectionStatus: 'connected',
+    disconnectTimer: null
+  };
+  
+  // Set user's seated index
+  myAbsoluteSeatedIndex = absoluteSeatIndex;
+  myVisualIndex = 0; // Always South in their view
+  
+  console.log(`✅ Player ${userName} seated at Seat ${absoluteSeatIndex}`);
+  console.log('✅ myAbsoluteSeatedIndex:', myAbsoluteSeatedIndex);
+  console.log('✅ myVisualIndex:', myVisualIndex);
+  
+  return true;
+}
+
+// Unseat a player (called on disconnect or leave)
+function unseatPlayer(absoluteSeatIndex) {
+  if (!isSeatOccupied(absoluteSeatIndex)) {
+    console.error('❌ Seat', absoluteSeatIndex, 'is already empty');
+    return false;
+  }
+  
+  const occupant = seats[absoluteSeatIndex];
+  
+  // Clear disconnection timer if exists
+  if (occupant.disconnectTimer) {
+    clearTimeout(occupant.disconnectTimer);
+  }
+  
+  // Reset seat to empty
+  seats[absoluteSeatIndex] = {
+    seatIndex: absoluteSeatIndex,
+    occupantType: 'empty',
+    occupantId: null,
+    displayName: `[Seat ${absoluteSeatIndex + 1}]`,
+    score: null,
+    connectionStatus: 'disconnected',
+    disconnectTimer: null
+  };
+  
+  // If it was the current user, clear their seated index
+  if (absoluteSeatIndex === myAbsoluteSeatedIndex) {
+    myAbsoluteSeatedIndex = null;
+    myVisualIndex = null;
+    console.log('✅ Current user unseated');
+  }
+  
+  console.log(`✅ Seat ${absoluteSeatIndex} is now empty`);
+  return true;
+}
+
+// Get seat information for display
+function getSeatDisplayInfo(absoluteSeatIndex) {
+  const seat = seats[absoluteSeatIndex];
+  
+  return {
+    seatIndex: seat.seatIndex,
+    displayName: seat.displayName,
+    score: seat.score,
+    occupantType: seat.occupantType,
+    isActive: isSeatActive(absoluteSeatIndex),
+    isMyTurn: false, // Will be calculated in Step 2 with rotation
+    isMySeat: absoluteSeatIndex === myAbsoluteSeatedIndex
+  };
+}
+
+// Debug function: Print current table state
+function debugTableState() {
+  console.log('=== TABLE STATE ===');
+  console.log('Current Table:', currentTable);
+  console.log('My Seated Index:', myAbsoluteSeatedIndex);
+  console.log('My Visual Index:', myVisualIndex);
+  console.log('Seats:');
+  seats.forEach((seat, index) => {
+    if (isSeatActive(index)) {
+      console.log(`  Seat ${index}:`, seat.displayName, '|', seat.occupantType, '|', seat.score);
+    } else {
+      console.log(`  Seat ${index}: [HIDDEN]`);
+    }
+  });
+  console.log('Active Seats:', getActiveSeatIndices(currentTable.config.maxSeats));
+  console.log('Human Seats:', getHumanSeats());
+  console.log('Bot Seats:', getBotSeats());
+  console.log('===================');
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', () => {
+  // Initialize Common Table 0 by default
+  initializeCommonTable();
+  
+  // Debug: Print initial state
+  debugTableState();
+});
+///
 ///
 // === UNIFIED TRAINING MODE SYSTEM ===
 // Place this BEFORE any game code (after variable declarations)
@@ -6731,6 +7170,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       <div class="msg-server"><span>[Server]</span> Game: Domino. Room: Common.</div>
     </div>
 	<div id="message-list-users"><div id="message-list-user"></div><div id="userListContainer"></div></div>
+	<button id="reopen-user" style="display:none;">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2">
+    <polyline points="11 17 6 12 11 7"></polyline>
+    <polyline points="18 17 13 12 18 7"></polyline>
+  </svg>
+</button>
   </div>
 
   <div id="network-tabs">
@@ -6809,6 +7254,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         </div>
         </div>
     </div>
+	<form>
 <div class="tab-content" id="newtable-tab">
   <div class="tab-header">✚ New Table</div>
   <div class="tab-scroll">
@@ -6816,7 +7262,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       <label class="full-width">
         <span>Table Name:</span>
-        <input type="text" id="table-name-input" placeholder="My Awesome Table" maxlength="30">
+        <input type="text" id="table-name-input" autocomplete="Domino" placeholder="My Awesome Table" maxlength="30">
       </label>
 
       <div class="form-row">
@@ -6860,7 +7306,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       <div id="password-field" class="full-width" style="display: none;">
         <label>
           <span>Password:</span>
-          <input type="password" id="table-password" placeholder="Enter password" maxlength="20">
+          <input type="password" id="table-password" autocomplete="current-password" placeholder="Enter password" maxlength="20">
         </label>
       </div>
 
@@ -6868,6 +7314,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     </div>
   </div>
 </div>
+</form>
 <div class="chat-input-bar">
   <input id="chat-input" type="text" placeholder="Type your message..." maxlength="200">
   <button id="composer-submit-button" type="button" aria-label="Send prompt" data-testid="send-button" class="composer-submit-btn">
@@ -6954,6 +7401,9 @@ document.addEventListener('DOMContentLoaded', () => {
     messageList.scrollTop = messageList.scrollHeight;
   }
 });
+
+
+
 </script>
 </body>
 </html>
