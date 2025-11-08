@@ -1459,7 +1459,7 @@ color: #0f0;
       </select>
     </label>
   </div>
-  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.5.0</div>
+  <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">Version 4.5.1</div>
   <div  id="betDiv">
   <select id="bets">
   <option value="1000">$1,000</option>
@@ -1642,7 +1642,7 @@ const header = document.getElementById("message-list-user");
 // build DOM manually
 header.innerHTML = `
   <span><strong>${session.userName}</strong></span><br>
-  <span class="logoutBtn" style="float:right; cursor:pointer;">Log out</span><br><br>
+  <span class="logoutBtn" style="float:right; cursor:pointer;">↩️ Log out</span><br><br>
 `;
 header.querySelector(".logoutBtn").addEventListener("click", async () => {
     // ✅ --- NEW LOGOUT HANDLER --- ✅
@@ -2068,10 +2068,12 @@ function appendChatBubble(uid, side, text, timestamp = null) {
   textBubble.textContent = text;
 
   Object.assign(textBubble.style, {
-    padding: "8px 12px",
+    padding: "6px 10px",
     borderRadius: "14px",
-    maxWidth: "80%",
+    maxWidth: "100%",
     wordWrap: "break-word",
+	textOverflow: "ellipsis",
+	overflow: "hidden",
     fontSize: "0.89rem",
     lineHeight: "1.25rem",
     color: "#fff",
@@ -2335,7 +2337,7 @@ function showChatWindow(senderUid, senderName, currentUser) {
       flex-shrink: 0;
       gap: 0;
     ">
-      <input type="text" id="msgInput-${senderUid}" placeholder="Type a message..." style="
+      <input type="text" id="msgInput-${senderUid}" maxlength="200" placeholder="Type a message..." style="
         flex: 1;
         background: rgba(0,0,0,0.25);
         border-radius: 12px 0 0 12px;
@@ -2345,6 +2347,9 @@ function showChatWindow(senderUid, senderName, currentUser) {
         padding: 10px 12px;
         outline: none;
         font-size: 0.88rem;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
       ">
       <button class="sendBtn" data-uid="${senderUid}" style="
         background: #4a86ff;
