@@ -1827,7 +1827,7 @@ function subscribeToTableScores() {
       // Auto-close after 5 seconds
       setTimeout(() => {
         if (popup.parentNode) popup.remove();
-      }, 5000);
+      }, 3000);
     }
 
     // Helper function to convert Firebase errors to friendly messages
@@ -5718,7 +5718,7 @@ function startNewGame() {
       okButton.style.borderRadius = '8px';
       okButton.style.cursor = 'pointer';
       okButton.style.boxShadow = '0 0 10px rgba(0,255,0,0.6)';
-      const autoRemoveTimeout = setTimeout(() => popup.remove(), 5000);
+      const autoRemoveTimeout = setTimeout(() => popup.remove(), 3000);
       okButton.addEventListener('click', () => {
       clearTimeout(autoRemoveTimeout); // Cancel auto-remove if clicked first
       popup.remove();
@@ -6959,7 +6959,7 @@ async function updateScoresForWin(winner, gameState) {
       message += `${payerName} pays ${abbreviate(pay)}\n`;
     }
   }
-  setTimeout(() => safeAlert(message), 100);
+  setTimeout(() => safeAlert(message), 10);
 }
 
 // Updated: Intentional block with assistant
@@ -7004,7 +7004,7 @@ async function updateScoresForIntentionalBlockWithAssist(blocker, assistant, gam
   }
   
   nextGameStarter = blocker;
-  setTimeout(() => safeAlert(message), 100);
+  setTimeout(() => safeAlert(message), 10);
 }
 // Updated: Intentional block without assistant
 async function updateScoresForIntentionalBlockNoAssist(blocker, gameState) {
@@ -7073,7 +7073,7 @@ async function updateScoresForIntentionalBlockNoAssist(blocker, gameState) {
   }
   
   nextGameStarter = blocker;
-  setTimeout(() => safeAlert(message), 100);
+  setTimeout(() => safeAlert(message), 10);
 }
 // Updated: Force block
 async function updateScoresForForceBlock(gameState) {
@@ -7155,7 +7155,7 @@ async function updateScoresForForceBlock(gameState) {
     }
   }
   
-  setTimeout(() => safeAlert(message), 100);
+  setTimeout(() => safeAlert(message), 10);
 }
 
 
