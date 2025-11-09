@@ -529,7 +529,7 @@
       align-items: center;
       justify-content: center;
       min-width: 100px;
-      pointer-events: none;
+      /*pointer-events: none;*/
 	  bottom: 2px;
     }
 
@@ -1516,14 +1516,12 @@ right: 0;
  <script>
 document.addEventListener('DOMContentLoaded', () => {
   const betsButton = document.getElementById('bets');
-  
-  const messageList = document.getElementById('message-list-users');
-  const reopenBtn = document.getElementById('reopen-user');
-
-  if (betsButton) {
+   if (betsButton) {
     betsButton.disabled = false;
   }
-
+ 
+  const messageList = document.getElementById('message-list-users');
+  const reopenBtn = document.getElementById('reopen-user');
  // --- Functions ---
 
 const closeMessageList = (e) => {
@@ -1628,8 +1626,6 @@ let globalMessageUnsubscribers = [];
 let globalUserTableUnsubscriber = null; // For the user table
 let onlineStatusListenerAttached = false; // 👈 ADD THIS LINE	
 
-
-///
 // --- Custom Popup System ---
 function showCustomPopup(message, type = "info") {
   // Remove existing popup if any
@@ -3382,6 +3378,80 @@ function unseatPlayer(absoluteSeatIndex) {
     clearTimeout(occupant.disconnectTimer);
   }
   
+  // If game is active, handle game state changes
+  if (gameState) {
+    const hand = gameState.players[absoluteSeatIndex];
+    
+    // Return all tiles to boneyard
+    if (hand && Array.isArray(hand) && hand.length > 0) {
+      gameState.boneyard.push(...hand);
+      console.log(`✅ Returned ${hand.length} tiles to boneyard from Seat ${absoluteSeatIndex}`);
+    }
+    
+    // Empty the hand
+    gameState.players[absoluteSeatIndex] = [];
+    
+    // Update playerOrder to remove this player
+    const oldPlayerOrder = gameState.playerOrder || [];
+    gameState.playerOrder = oldPlayerOrder.filter(p => p !== absoluteSeatIndex);
+    
+    console.log(`✅ Player removed from game. New player order:`, gameState.playerOrder);
+    
+    // If it's this player's turn, skip to next player
+    if (currentActivePlayerTurn === absoluteSeatIndex) {
+      if (gameState.playerOrder.length === 0) {
+        // No players left, end game
+        gameState.gameOver = true;
+        console.log('❌ No players left, game over');
+      } else {
+        // Find next seated player
+        const currentIndex = oldPlayerOrder.indexOf(absoluteSeatIndex);
+        let nextIndex = currentIndex;
+        let nextPlayer = null;
+        let attempts = 0;
+        
+        // Look for next seated player in old order
+        while (attempts < oldPlayerOrder.length) {
+          nextIndex = (nextIndex + 1) % oldPlayerOrder.length;
+          const candidate = oldPlayerOrder[nextIndex];
+          if (gameState.playerOrder.includes(candidate)) {
+            nextPlayer = candidate;
+            break;
+          }
+          attempts++;
+        }
+        
+        if (nextPlayer === null && gameState.playerOrder.length > 0) {
+          // Fallback: use first player in new order
+          nextPlayer = gameState.playerOrder[0];
+        }
+        
+        if (nextPlayer !== null) {
+          currentActivePlayerTurn = nextPlayer;
+          console.log(`✅ Turn skipped to Seat ${nextPlayer}`);
+          
+          // Re-render to show new turn
+          renderGame(gameState);
+          
+          // Auto-play if next player is a bot
+          if (isBot(nextPlayer)) {
+            setTimeout(() => playAI(gameState), 1500);
+          }
+        } else {
+          gameState.gameOver = true;
+          console.log('❌ No valid next player, game over');
+        }
+      }
+    }
+    
+    // Check if only 1 player left (can't continue)
+    if (gameState.playerOrder.length === 1) {
+      gameState.gameOver = true;
+      safeAlert('Not enough players to continue. Game over!');
+      showNewGameButton();
+    }
+  }
+  
   // Reset seat to empty
   seats[absoluteSeatIndex] = {
     seatIndex: absoluteSeatIndex,
@@ -3397,13 +3467,17 @@ function unseatPlayer(absoluteSeatIndex) {
   if (absoluteSeatIndex === myAbsoluteSeatedIndex) {
     myAbsoluteSeatedIndex = null;
     myVisualIndex = null;
+    // Reset selected tile index
+    if (gameState) {
+      gameState.selectedIndex = -1;
+    }
     console.log('✅ Current user unseated');
   }
   
   console.log(`✅ Seat ${absoluteSeatIndex} is now empty`);
   return true;
 }
-
+///
 // Get seat information for display
 function getSeatDisplayInfo(absoluteSeatIndex) {
   const seat = seats[absoluteSeatIndex];
@@ -3727,12 +3801,33 @@ function resumeAudioContext() {
       return svg;
     }
 
-    function generateTileSvg(isHorizontal, tileData) {
-      const colors = ["", "red", "gold", "white", "red", "seagreen", "white"];
-      let svg;
-      if (!isHorizontal) {
-        svg = `<svg viewBox='0 0 50 100' xmlns='http://www.w3.org/2000/svg'>`;
-        const { top, bottom } = tileData;
+function generateTileSvg(isHorizontal, tileData) {
+  // Safety check for tileData - handle both vertical (top/bottom) and horizontal (left/right)
+  if (!tileData) {
+    console.error('generateTileSvg: tileData is null/undefined');
+    // Return a blank tile SVG
+    return isHorizontal 
+      ? `<svg viewBox='0 0 100 50' xmlns='http://www.w3.org/2000/svg'></svg>`
+      : `<svg viewBox='0 0 50 100' xmlns='http://www.w3.org/2000/svg'></svg>`;
+  }
+  
+  // For horizontal tiles, check left/right; for vertical, check top/bottom
+  const hasValidData = isHorizontal 
+    ? (typeof tileData.left !== 'undefined' && typeof tileData.right !== 'undefined')
+    : (typeof tileData.top !== 'undefined' && typeof tileData.bottom !== 'undefined');
+  
+  if (!hasValidData) {
+    console.error('generateTileSvg: Invalid tileData structure', tileData, 'isHorizontal:', isHorizontal);
+    // Return a blank tile SVG
+    return isHorizontal 
+      ? `<svg viewBox='0 0 100 50' xmlns='http://www.w3.org/2000/svg'></svg>`
+      : `<svg viewBox='0 0 50 100' xmlns='http://www.w3.org/2000/svg'></svg>`;
+  }
+  const colors = ["", "red", "gold", "white", "red", "seagreen", "white"];
+  let svg;
+  if (!isHorizontal) {
+    svg = `<svg viewBox='0 0 50 100' xmlns='http://www.w3.org/2000/svg'>`;
+    const { top, bottom } = tileData;
         if (top > 0) {
           svg += `<g class='dots' fill='${colors[top]}'>`;
           const tops = {
@@ -3802,12 +3897,19 @@ function resumeAudioContext() {
       return tile.top === tile.bottom;
     }
 
-    function canPlayTile(tile, board) {
-      if (!board.leftEnd) return true;
-      const leftEnd = board.leftEnd.value;
-      const rightEnd = board.rightEnd.value;
-      return tile.top === leftEnd || tile.bottom === leftEnd || tile.top === rightEnd || tile.bottom === rightEnd;
-    }
+function canPlayTile(tile, board) {
+  // Safety check for tile
+  if (!tile || typeof tile.top === 'undefined' || typeof tile.bottom === 'undefined') {
+    console.warn('canPlayTile: Invalid tile', tile);
+    return false;
+  }
+  
+  if (!board || !board.leftEnd) return true;
+  
+  const leftEnd = board.leftEnd.value;
+  const rightEnd = board.rightEnd.value;
+  return tile.top === leftEnd || tile.bottom === leftEnd || tile.top === rightEnd || tile.bottom === rightEnd;
+}
 
     function canPlayOnEnd(tile, endValue) {
       return tile.top === endValue || tile.bottom === endValue;
@@ -3912,9 +4014,11 @@ function setupGame() {
 	else{
 	}
   };*/
-function startNewGame(playerId) {
-  console.log("Current player:", playerId);
-
+function startNewGame() {
+ // console.log("Current player:", playerId);
+/*gameState = {
+    gameOver: false
+  };*/
   // Initialize Common Table 0 if not already initialized
   if (!currentTable) {
     initializeCommonTable();
@@ -3957,7 +4061,7 @@ function startNewGame(playerId) {
 	  if (isBot(currentActivePlayerTurn)) {
 		setTimeout(() => {
 			   playAI(gameState);
-		}, 3000);//delayAI execution
+		}, 2000);//delayAI execution
 	  }
 	};
 
@@ -5141,7 +5245,7 @@ function safeAlert(msg) {
   okButton.style.borderRadius = '8px';
   okButton.style.cursor = 'pointer';
   okButton.style.boxShadow = '0 0 10px rgba(0,255,0,0.6)';
-  const autoRemoveTimeout = setTimeout(() => popup.remove(), 3000);
+  const autoRemoveTimeout = setTimeout(() => popup.remove(), 5000);
   okButton.addEventListener('click', () => {
   clearTimeout(autoRemoveTimeout); // Cancel auto-remove if clicked first
   popup.remove();
@@ -5881,12 +5985,18 @@ function handleTileClick(gameState, tileIndex, playButtons) {
   const hand = players[myAbsoluteSeatedIndex];
   
   // Safety check
-  if (!hand || !Array.isArray(hand) || !hand[tileIndex]) {
+  if (!hand || !Array.isArray(hand) || tileIndex < 0 || tileIndex >= hand.length) {
     console.error('Invalid tile index or hand:', tileIndex, hand);
     return;
   }
   
   const clickedTile = hand[tileIndex];
+  
+  // Safety check for tile structure
+  if (!clickedTile || typeof clickedTile.top === 'undefined' || typeof clickedTile.bottom === 'undefined') {
+    console.error('Invalid tile structure:', clickedTile);
+    return;
+  }
 
   if (currentActivePlayerTurn === myAbsoluteSeatedIndex) {
     // ACTIVE TURN - Selection mode only (for playing tiles)
@@ -5906,7 +6016,7 @@ function handleTileClick(gameState, tileIndex, playButtons) {
       // Click selected tile again - ROTATE it
       // Exception: Don't rotate required highest double in first game
       if (board.tiles.length === 0 && isThisFirstGame) {
-        const doubles = hand.filter(t => isDouble(t));
+        const doubles = hand.filter(t => t && isDouble(t));
         if (doubles.length > 0) {
           const highestDouble = doubles.reduce((max, t) => t.top > max.top ? t : max, doubles[0]);
           if (clickedTile.top === highestDouble.top && clickedTile.bottom === highestDouble.bottom) {
@@ -5922,7 +6032,25 @@ function handleTileClick(gameState, tileIndex, playButtons) {
       gameState.selectedIndex = -1;
     } else {
       // Different tile clicked - SWAP positions
+      // Safety check for selectedIndex
+      if (selectedIndex < 0 || selectedIndex >= hand.length) {
+        console.error('Invalid selectedIndex:', selectedIndex);
+        gameState.selectedIndex = -1;
+        //renderGame(gameState);
+        return;
+      }
+      
       const selectedTile = hand[selectedIndex];
+      
+      // Safety check for selected tile
+      if (!selectedTile || typeof selectedTile.top === 'undefined' || typeof selectedTile.bottom === 'undefined') {
+        console.error('Invalid selected tile:', selectedTile);
+        gameState.selectedIndex = -1;
+        renderGame(gameState);
+        return;
+      }
+      
+      // Perform swap
       hand[selectedIndex] = clickedTile;
       hand[tileIndex] = selectedTile;
       gameState.selectedIndex = -1;
@@ -5979,9 +6107,9 @@ function playTile(gameState, tile, end) {
 
   const playedTile = playerHand.splice(tileIndex, 1)[0];
 
-  if (currentActivePlayerTurn === 0) {
+  //if (currentActivePlayerTurn === 0) {
     gameState.selectedIndex = -1;
-  }
+ // }
 
   const handBeforePlay = [...playerHand, playedTile];
 
@@ -6518,53 +6646,56 @@ function updateScoresForForceBlock(gameState) {
   localStorage.setItem('dominoScores', JSON.stringify(scores));
 }
 ///
-function showNewGameButton() {
-  // Skip UI updates during training
+let manualNewGameTriggered = false;
+
+function showNewGameButton() { 
   if (window.trainingMode) return;
-  
-    ///
-  // === ADD THIS LINE TO SAVE ALL LEARNING ===
+
   if (aiBrain) aiBrain.save();
-  console.log('Save trained data for AI')
-  // ==========================================
-  ///
-const newGameBtn = document.getElementById('new-game');
-newGameBtn.style.display = 'block';
-newGameBtn.onclick = () => {
-  // 🧹 Clean up any leftover result popup
-  const popup = document.getElementById('safe-alert');
-  if (popup) {
-    popup.remove();
-    //console.log("🧹 Removed safe-alert popup before starting new game");
+  console.log("Save trained data")
+
+  manualNewGameTriggered = false; // reset first time we show the button
+
+  const newGameBtn = document.getElementById('new-game');
+  newGameBtn.style.display = 'block';
+
+  newGameBtn.onclick = () => {
+    manualNewGameTriggered = true;   // THIS MUST SET GLOBAL
+
+    const popup = document.getElementById('safe-alert');
+    if (popup) popup.remove();
+
+    initAudioContext();
+    newGameBtn.style.display = 'none';
+    document.getElementById('table').innerHTML = '';
+
+    gameState = setupGame();
+    renderGame(gameState);  
+    startNewGame();  
+  };
+
+  if (gameState.gameOver) {
+    setTimeout(() => {
+
+      if (manualNewGameTriggered) {
+        console.log('manual new game already triggered -> skip auto');
+        return;
+      }
+
+      const table = document.getElementById('table');
+      if (table) table.replaceChildren();
+      startNewGame();
+
+    }, 6000);
   }
-
-  // 🎧 Initialize sound (resume audio context)
-  initAudioContext();
-
-  // ♻️ Hide the button and reset the game
-  newGameBtn.style.display = 'none';
-  
-  // ⭐ FIX: Add this line to manually and immediately clear the board
-  document.getElementById('table').innerHTML = '';
-  
-  gameState = setupGame();
-  renderGame(gameState);    
-
-  // 🧠 Trigger AI autoplay if not player 0’s turn
-
-};
-if (gameState.gameOver) {  
-  // delay on new game
-  setTimeout(() => {
-    const table = document.getElementById('table');
-    if (table) table.replaceChildren();    
-    startNewGame();
-  }, 6000);
 }
 
-}
+
 ///
-
+function isMyVisualSeat(visualIndex) {
+  // South = visual index 0
+  return myAbsoluteSeatedIndex !== null && visualIndex === 0;
+}
 // UPDATED renderGame function - use currentActivePlayerTurn
 function renderGame(gameState) {
   // CRITICAL: Block ALL rendering during training
@@ -6572,6 +6703,16 @@ function renderGame(gameState) {
   
   //requestAnimationFrame(() => {
     const {players, board, gameOver, selectedIndex, isThisFirstGame} = gameState;
+// Safety check: If selectedIndex is invalid, reset it silently
+  if (myAbsoluteSeatedIndex !== null && 
+      selectedIndex >= 0 && 
+      players[myAbsoluteSeatedIndex]) {
+    const handSize = players[myAbsoluteSeatedIndex].length;
+    if (selectedIndex >= handSize) {
+      gameState.selectedIndex = -1; // Reset silently, no warning needed
+    }
+  }
+	
     const tableDiv = document.getElementById('table');
 
     tableDiv.innerHTML = '';
@@ -6673,13 +6814,19 @@ leftPlaceholder.ondrop = (e) => {
 
   try {
     const tileData = JSON.parse(e.dataTransfer.getData('text/plain'));
-    if (!canPlayOnEnd(tileData, board.leftEnd.value)) return; // << guard here
+    if (!canPlayOnEnd(tileData, board.leftEnd.value)) return;
     playTile(gameState, tileData, 'left');
   } catch (err) {}
 };
-
-		
-        leftPlaceholder.onclick = (e) => { e.stopPropagation(); if (gameState.selectedIndex !== -1) { const selectedTile = players[0][gameState.selectedIndex]; if (canPlayOnEnd(selectedTile, board.leftEnd.value)) playTile(gameState, selectedTile, 'left'); } };
+		leftPlaceholder.onclick = (e) => { 
+		  e.stopPropagation(); 
+		  if (gameState.selectedIndex !== -1 && myAbsoluteSeatedIndex !== null) { 
+			const selectedTile = players[myAbsoluteSeatedIndex][gameState.selectedIndex]; 
+			if (selectedTile && canPlayOnEnd(selectedTile, board.leftEnd.value)) {
+			  playTile(gameState, selectedTile, 'left');
+			}
+		  } 
+		};
       }
 	/*  else{
  if (leftPlaceholder) { leftPlaceholder.remove(); leftPlaceholder = null; }
@@ -6709,7 +6856,15 @@ rightPlaceholder.ondrop = (e) => {
   } catch (err) {}
 };
 		
-        rightPlaceholder.onclick = (e) => { e.stopPropagation(); if (gameState.selectedIndex !== -1) { const selectedTile = players[0][gameState.selectedIndex]; if (canPlayOnEnd(selectedTile, board.rightEnd.value)) playTile(gameState, selectedTile, 'right'); } };
+			 rightPlaceholder.onclick = (e) => { 
+			  e.stopPropagation(); 
+			  if (gameState.selectedIndex !== -1 && myAbsoluteSeatedIndex !== null) { 
+				const selectedTile = players[myAbsoluteSeatedIndex][gameState.selectedIndex]; 
+				if (selectedTile && canPlayOnEnd(selectedTile, board.rightEnd.value)) {
+				  playTile(gameState, selectedTile, 'right');
+				}
+			  } 
+			};
       }
     }
 	else{
@@ -6721,13 +6876,17 @@ if (!gameOver && isMyTurn() && myAbsoluteSeatedIndex !== null) {
   if (board.tiles.length === 0) {
     tableDiv.ondragover = (e) => e.preventDefault();
     tableDiv.ondrop = (e) => { e.preventDefault(); try { const tileData = JSON.parse(e.dataTransfer.getData('text/plain')); playTile(gameState, tileData, 'right'); } catch (err) {} };
-    tableDiv.onclick = (e) => { 
-      // Only play if clicking directly on table (not a placeholder)
-      if (e.target === tableDiv && gameState.selectedIndex !== -1) { 
-        const selectedTile = players[0][gameState.selectedIndex]; 
-        playTile(gameState, selectedTile, 'right'); 
-      } 
-    };
+	
+		tableDiv.onclick = (e) => { 
+		  // Only play if clicking directly on table (not a placeholder)
+		  if (e.target === tableDiv && gameState.selectedIndex !== -1 && myAbsoluteSeatedIndex !== null) { 
+			const selectedTile = players[myAbsoluteSeatedIndex][gameState.selectedIndex];
+			if (selectedTile) {
+			  playTile(gameState, selectedTile, 'right');
+			}
+		  } 
+		};
+
   } else {
     // Remove general table click handler when board has tiles
     tableDiv.onclick = null;
@@ -6779,16 +6938,21 @@ document.querySelectorAll('.player-hand').forEach((hand, visualIndex) => {
   if (seatInfo.occupantType !== 'empty') {
     scoreDiv.innerHTML = `<span class="score-arrow">${!gameOver && hasCurrentTurn ? '➤' : ''}</span><span class="score-text">[${playerLabel}]</span><div class="score-number"><div class="coins-container ${coinColorClass}">${coinsHtml}</div><span class="score-text" style="position: absolute; top: 50%; left: 50%;top: -1px; transform: translate(calc(-50% - 10px), calc(-50% + 3px)); z-index: 2; color: black;">${scoreText}</span></div>`;
     
-    // Make MY seat (visual South) clickable for UNSITTING
+// Make MY seat (visual South) clickable for UNSITTING
     if (!gameOver && seatInfo.isMySeat) {
       scoreDiv.style.cursor = 'pointer';
       scoreDiv.style.pointerEvents = 'auto';
-      scoreDiv.onclick = () => {
+      
+      // Use addEventListener with once:false to ensure it works
+      scoreDiv.onclick = (e) => {
+        e.stopPropagation(); // Prevent event bubbling
+        e.preventDefault(); // Prevent default behavior
+        
         const currentUser = JSON.parse(localStorage.getItem('loggedUser'));
         if (currentUser) {
+          console.log(`🔄 Unseating player from Seat ${absoluteIndex}`);
           unseatPlayer(absoluteIndex);
           renderGame(gameState);
-          console.log(`✅ Player unseated from Seat ${absoluteIndex}`);
         }
       };
       
@@ -6805,13 +6969,18 @@ document.querySelectorAll('.player-hand').forEach((hand, visualIndex) => {
     // Empty seat - show clickable label
     scoreDiv.innerHTML = `<span class="score-text" style="cursor: pointer; color: #0f0; font-weight: bold; pointer-events: auto;">${playerLabel}</span>`;
     
-    // Make empty seat clickable for SITTING
+// Make empty seat clickable for SITTING
     if (!gameOver) {
       scoreDiv.style.cursor = 'pointer';
       scoreDiv.style.pointerEvents = 'auto';
-      scoreDiv.onclick = () => {
+      
+      scoreDiv.onclick = (e) => {
+        e.stopPropagation(); // Prevent event bubbling
+        e.preventDefault(); // Prevent default behavior
+        
         const currentUser = JSON.parse(localStorage.getItem('loggedUser'));
         if (currentUser && myAbsoluteSeatedIndex === null) {
+          console.log(`🔄 Seating player at Absolute Seat ${absoluteIndex}`);
           // Seat the player at the ABSOLUTE index
           const seated = seatPlayer(absoluteIndex, currentUser.uid, currentUser.userName, scores[absoluteIndex]);
           if (seated) {
@@ -6903,7 +7072,8 @@ document.querySelectorAll('.player-hand').forEach((hand, visualIndex) => {
       tileDiv.className = 'tile';
       
       // Show closed tiles for all seats EXCEPT my seat (visual South)
-      if (!gameOver && visualIndex !== 0 && tileMode === 'Close') {
+	  const isSouth = isMyVisualSeat(visualIndex);          // <-- NEW
+      if (!gameOver && !isSouth && tileMode === 'Close') {
         tileDiv.innerHTML = generateBackTileSvg(false);
       } else {
         tileDiv.innerHTML = generateTileSvg(false, tile);
