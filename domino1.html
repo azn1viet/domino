@@ -1545,47 +1545,33 @@ const closeMessageList = (e) => {
 
 
 const openMessageList = () => {
-
-  // 1. Hide the reopen button (This was the missing line)
+  // 1. Hide the reopen button
   if (reopenBtn) {
     reopenBtn.style.display = 'none';
-  }  
-    // 2. Show the list
+  }
+
+  // 2. Show the list
   if (messageList) {
-messageList.classList.remove('hidden'); // <-- KEY CHANGE
+    messageList.classList.remove('hidden');
   }
 };
 
-
-// --- Event Listeners (From our previous conversation) ---
+// --- Event Listeners ---
 
 if (messageList) {
   messageList.addEventListener('click', closeMessageList);
-  messageList.addEventListener('touchstart', (e) => {
-    const didClose = closeMessageList(e);
-    if (didClose) {
-      e.preventDefault(); // Stop ghost click
-    }
-  });
+
+  // Passive touch listener (won't call preventDefault)
+  messageList.addEventListener('touchstart', closeMessageList, { passive: true });
 }
 
 if (reopenBtn) {
   reopenBtn.addEventListener('click', openMessageList);
-  reopenBtn.addEventListener('touchstart', (e) => {
-    openMessageList();
-    e.preventDefault(); // Stop ghost click
-  });
+
+  // Passive touch listener
+  reopenBtn.addEventListener('touchstart', openMessageList, { passive: true });
 }
 
-  if (messageList) {
-    messageList.addEventListener('click', closeMessageList);
-    messageList.addEventListener('touchstart', closeMessageList);
-  }
-
-  if (reopenBtn) {
-    reopenBtn.addEventListener('click', openMessageList);
-    reopenBtn.addEventListener('touchstart', openMessageList);
-  }
 });
 </script>
 <script type="module">
@@ -1612,7 +1598,8 @@ import {
   remove,
   off,
   query,
-  limitToLast
+  limitToLast,
+  serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
 
 // --- Global State Variables ---
@@ -1725,6 +1712,80 @@ function getFriendlyErrorMessage(firebaseError) {
 }
 
 ///
+// NEW FUNCTION: This client will watch for and kick expired players
+function watchAndKickPlayers() {
+  const seatsRef = ref(db, `tables/${currentTable.game}/${currentTable.tableId}/seats`);
+
+  // Listen for any changes to any seat
+  onValue(seatsRef, (snapshot) => {
+    if (!snapshot.exists()) return;
+
+    const allSeats = snapshot.val();
+    const now = Date.now(); // Get current time once
+
+    for (const seatIndex in allSeats) {
+      const seat = allSeats[seatIndex];
+
+      // Check if a player is disconnected and has a timestamp
+      if (seat && seat.connectionStatus === 'disconnected' && seat.disconnectTime) {
+        
+        const gracePeriod = 15 * 1000; // 15 seconds
+        const timeElapsed = now - seat.disconnectTime;
+
+        // Has the grace period expired?
+        if (timeElapsed > gracePeriod) {
+          console.log(`Player at seat ${seatIndex} has expired. Kicking...`);
+          
+          // This client (the janitor) will apply the penalty and remove them.
+          // We use a new function to avoid confusion with the manual unseat.
+          kickExpiredPlayer(seatIndex, seat.occupantId);
+        }
+      }
+    }
+  });
+}
+
+// NEW FUNCTION: Applies penalty and removes an expired player
+async function kickExpiredPlayer(seatIndex, expiredPlayerId) {
+  // 1. Get the seat reference
+  const seatRef = ref(db, `tables/${currentTable.game}/${currentTable.tableId}/seats/${seatIndex}`);
+
+  // 2. Check if the player is still the one we thought (to prevent race conditions)
+  const snap = await get(seatRef);
+  if (!snap.exists() || snap.val().occupantId !== expiredPlayerId || snap.val().connectionStatus !== 'disconnected') {
+    console.log(`Kick for seat ${seatIndex} aborted (player reconnected or was already kicked).`);
+    return;
+  }
+
+  // 3. Apply Penalty (Your 2x logic)
+  console.log(`Applying 2x penalty to ${expiredPlayerId} at seat ${seatIndex}.`);
+  // ... your code to calculate 2x penalty ...
+  // ... your code to update scores in Firebase ...
+  // E.g., await update(ref(db, `scores/`), { ...penalty_updates... });
+  
+  // 4. Remove player from seat
+  try {
+    await set(seatRef, null);
+    console.log(`✅ Firebase seat ${seatIndex} cleared (Expired).`);
+    
+    // Update local state if this client is in the game
+    if (seats[seatIndex]) {
+       seats[seatIndex] = {
+        seatIndex: parseInt(seatIndex, 10),
+        occupantType: 'empty',
+        occupantId: null,
+        displayName: `[Seat ${parseInt(seatIndex, 10) + 1}]`,
+        score: null,
+        connectionStatus: 'disconnected',
+        disconnectTimer: null
+      };
+      renderGame(gameState); // Re-render to show the empty seat
+    }
+
+  } catch (error) {
+    console.error(`❌ Failed to kick from seat ${seatIndex}:`, error);
+  }
+}
 
 ///
 
@@ -1737,12 +1798,19 @@ onAuthStateChanged(auth, user => {
     return;
   }
 else{
+
   const session = JSON.parse(localStorage.getItem("loggedUser"));
   if (!session) {
     location.href = "index.html";
     return;
   }
 
+  
+  
+  ///
+
+  ///
+  
   // header (only yourself)
 const header = document.getElementById("message-list-user");
 
@@ -1757,6 +1825,8 @@ header.innerHTML = `
 <br>
   <span class="logoutBtn" style="float:right; cursor:pointer;">↩️ Log out</span><br><br>
 `;
+
+
 header.querySelector(".logoutBtn").addEventListener("click", async () => {
     // ✅ --- NEW LOGOUT HANDLER --- ✅
 //logoutBtn.addEventListener("click", async () => {
@@ -1806,6 +1876,104 @@ header.querySelector(".logoutBtn").addEventListener("click", async () => {
     listenForIncomingDirectMessages(session.uid); 
 	// Initialize Common Table 0 first
 initializeCommonTable();
+
+///
+// === ADD THIS RECONNECT/RECLAIM LOGIC ===
+    (async () => {
+      try {
+        // 1. Check all seats on the current table
+        const seatsRef = ref(db, `tables/${currentTable.game}/${currentTable.tableId}/seats`);
+        const seatsSnap = await get(seatsRef);
+        
+        if (!seatsSnap.exists()) return; // No seats to check
+
+        const allSeats = seatsSnap.val();
+        for (const seatIndex in allSeats) {
+          const seat = allSeats[seatIndex];
+          
+          // 2. Did I own this seat?
+          if (seat && seat.occupantId === user.uid) {
+            console.log(`🔄 Found my seat (${seatIndex})! Reclaiming it.`);
+            
+            // 3. Reclaim the seat
+            const mySeatRef = ref(db, `tables/${currentTable.game}/${currentTable.tableId}/seats/${seatIndex}`);
+            
+            // 4. Update status to 'connected' and remove the timer
+            await update(mySeatRef, {
+              connectionStatus: 'connected',
+              disconnectTime: null 
+            });
+            
+            // 5. Cancel any old disconnect hook
+            await onDisconnect(mySeatRef).cancel();
+            
+            // 6. Set the *new* disconnect hook
+            await onDisconnect(mySeatRef).update({
+              connectionStatus: 'disconnected',
+              disconnectTime: serverTimestamp()
+            });
+
+            // 7. Set local state
+            myAbsoluteSeatedIndex = parseInt(seatIndex, 10);
+            myVisualIndex = 0;
+            seats[seatIndex] = { ...seat, seatIndex: myAbsoluteSeatedIndex };
+            
+            console.log(`✅ Seat ${seatIndex} reclaimed. Grace period reset.`);
+            
+// 8. ✅ FIX: Try to restore game state from Firebase OR localStorage
+try {
+  const gameStateRef = ref(db, `tables/${currentTable.game}/${currentTable.tableId}/gameState`);
+  const gameStateSnap = await get(gameStateRef);
+  
+  if (gameStateSnap.exists()) {
+    gameState = gameStateSnap.val();
+    console.log("✅ Game state restored from Firebase");
+  } else {
+    // Try local backup
+    const backup = localStorage.getItem('gameState_backup');
+    if (backup) {
+      const parsed = JSON.parse(backup);
+      // Only use if recent (within 5 minutes)
+      if (Date.now() - parsed.timestamp < 300000) {
+        gameState = parsed;
+        currentActivePlayerTurn = parsed.currentActivePlayerTurn || 0;
+        console.log("✅ Game state restored from local backup");
+      } else {
+        gameState = setupGame();
+        console.log("🎮 Local backup too old, starting fresh");
+      }
+    } else {
+      gameState = setupGame();
+      console.log("🎮 No backup found, starting fresh");
+    }
+  }
+} catch (err) {
+  console.warn("⚠️ Failed to restore game state:", err);
+  // Try local backup as last resort
+  const backup = localStorage.getItem('gameState_backup');
+  if (backup) {
+    gameState = JSON.parse(backup);
+    console.log("✅ Using local backup");
+  } else {
+    gameState = setupGame();
+  }
+}
+            
+            // 9. Now it's safe to render
+            if (gameState) {
+              renderGame(gameState);
+            }
+            break; // Stop checking
+          }
+        }
+      } catch (error) {
+        console.error("Error during seat reclaim:", error);
+      }
+      // ADD THIS CALL:
+      watchAndKickPlayers();
+    })();
+    // === END OF RECONNECT/RECLAIM LOGIC ===
+///
   // start game
   startNewGame(session.uid);
   }
@@ -3331,7 +3499,9 @@ function loadTable(tableConfig) {
 }
 
 // Seat a player at a specific seat (called when player clicks empty seat)
-function seatPlayer(absoluteSeatIndex, userId, userName, userScore) {
+// MODIFIED: This function is now async and writes to Firebase
+// MODIFIED: This function now sets the onDisconnect hook for a grace period
+async function seatPlayer(absoluteSeatIndex, userId, userName, userScore) {
   if (!isSeatActive(absoluteSeatIndex)) {
     console.error('❌ Seat', absoluteSeatIndex, 'is not active in this table');
     return false;
@@ -3341,118 +3511,80 @@ function seatPlayer(absoluteSeatIndex, userId, userName, userScore) {
     console.error('❌ Seat', absoluteSeatIndex, 'is already occupied');
     return false;
   }
+
+  const seatRef = ref(db, `tables/${currentTable.game}/${currentTable.tableId}/seats/${absoluteSeatIndex}`);
   
-  // Seat the player
-  seats[absoluteSeatIndex] = {
-    seatIndex: absoluteSeatIndex,
+  const seatData = {
     occupantType: 'human',
     occupantId: userId,
     displayName: userName,
     score: userScore,
-    connectionStatus: 'connected',
-    disconnectTimer: null
+    connectionStatus: 'connected' // Start as connected
   };
-  
-  // Set user's seated index
-  myAbsoluteSeatedIndex = absoluteSeatIndex;
-  myVisualIndex = 0; // Always South in their view
-  
-  console.log(`✅ Player ${userName} seated at Seat ${absoluteSeatIndex}`);
-  console.log('✅ myAbsoluteSeatedIndex:', myAbsoluteSeatedIndex);
-  console.log('✅ myVisualIndex:', myVisualIndex);
-  
-  return true;
-}
 
-// Unseat a player (called on disconnect or leave)
-function unseatPlayer(absoluteSeatIndex) {
-  if (!isSeatOccupied(absoluteSeatIndex)) {
-    console.error('❌ Seat', absoluteSeatIndex, 'is already empty');
+  try {
+    // 1. Set the data
+    await set(seatRef, seatData);
+    
+    // 2. SET THE GRACE PERIOD HOOK
+    // If they disconnect (refresh/close tab), Firebase will automatically
+    // update their status and add a timestamp.
+    await onDisconnect(seatRef).update({
+      connectionStatus: 'disconnected',
+      disconnectTime: serverTimestamp() // Firebase server-side timestamp
+    });
+
+    console.log(`✅ Firebase seat ${absoluteSeatIndex} claimed by ${userName}`);
+  } catch (error) {
+    console.error(`❌ Failed to claim Firebase seat ${absoluteSeatIndex}:`, error);
+    safeAlert("Error joining table. Please try again.");
     return false;
   }
   
-  const occupant = seats[absoluteSeatIndex];
+  // (Rest of your local state update logic)
+  seats[absoluteSeatIndex] = {
+    seatIndex: absoluteSeatIndex,
+    ...seatData,
+    disconnectTimer: null
+  };
   
-  // Clear disconnection timer if exists
-  if (occupant.disconnectTimer) {
-    clearTimeout(occupant.disconnectTimer);
+  myAbsoluteSeatedIndex = absoluteSeatIndex;
+  myVisualIndex = 0;
+  
+  console.log(`✅ Player ${userName} seated. Grace period is active.`);
+  return true;
+}
+// MODIFIED: This is now the "Forfeit" function.
+// It cancels the grace period and applies the penalty.
+async function unseatPlayer(absoluteSeatIndex) {
+  
+  // --- 1. Get the seat reference ---
+  const seatRef = ref(db, `tables/${currentTable.game}/${currentTable.tableId}/seats/${absoluteSeatIndex}`);
+
+  // --- 2. Cancel the grace period hook ---
+  // We are forfeiting, so we don't want the disconnect hook to run.
+  try {
+    await onDisconnect(seatRef).cancel();
+  } catch (error) {
+    console.warn("Could not cancel onDisconnect hook:", error);
   }
-  
-  // If game is active, handle game state changes
-  if (gameState) {
-    const hand = gameState.players[absoluteSeatIndex];
-    
-    // Return all tiles to boneyard
-    if (hand && Array.isArray(hand) && hand.length > 0) {
-      gameState.boneyard.push(...hand);
-      console.log(`✅ Returned ${hand.length} tiles to boneyard from Seat ${absoluteSeatIndex}`);
-    }
-    
-    // Empty the hand
-    gameState.players[absoluteSeatIndex] = [];
-    
-    // Update playerOrder to remove this player
-    const oldPlayerOrder = gameState.playerOrder || [];
-    gameState.playerOrder = oldPlayerOrder.filter(p => p !== absoluteSeatIndex);
-    
-    console.log(`✅ Player removed from game. New player order:`, gameState.playerOrder);
-    
-    // If it's this player's turn, skip to next player
-    if (currentActivePlayerTurn === absoluteSeatIndex) {
-      if (gameState.playerOrder.length === 0) {
-        // No players left, end game
-        gameState.gameOver = true;
-        console.log('❌ No players left, game over');
-      } else {
-        // Find next seated player
-        const currentIndex = oldPlayerOrder.indexOf(absoluteSeatIndex);
-        let nextIndex = currentIndex;
-        let nextPlayer = null;
-        let attempts = 0;
-        
-        // Look for next seated player in old order
-        while (attempts < oldPlayerOrder.length) {
-          nextIndex = (nextIndex + 1) % oldPlayerOrder.length;
-          const candidate = oldPlayerOrder[nextIndex];
-          if (gameState.playerOrder.includes(candidate)) {
-            nextPlayer = candidate;
-            break;
-          }
-          attempts++;
-        }
-        
-        if (nextPlayer === null && gameState.playerOrder.length > 0) {
-          // Fallback: use first player in new order
-          nextPlayer = gameState.playerOrder[0];
-        }
-        
-        if (nextPlayer !== null) {
-          currentActivePlayerTurn = nextPlayer;
-          console.log(`✅ Turn skipped to Seat ${nextPlayer}`);
-          
-          // Re-render to show new turn
-          renderGame(gameState);
-          
-          // Auto-play if next player is a bot
-          if (isBot(nextPlayer)) {
-            setTimeout(() => playAI(gameState), 1500);
-          }
-        } else {
-          gameState.gameOver = true;
-          console.log('❌ No valid next player, game over');
-        }
-      }
-    }
-    
-    // Check if only 1 player left (can't continue)
-    if (gameState.playerOrder.length === 1) {
-      gameState.gameOver = true;
-      safeAlert('Not enough players to continue. Game over!');
-      showNewGameButton();
-    }
+
+  // --- 3. Apply Penalty (Your existing logic) ---
+  // (Add your 2x bet penalty calculation here)
+  console.log(`Player ${getPlayerNumber(absoluteSeatIndex)} forfeited. Applying 2x penalty.`);
+  // ... your code to calculate penalty ...
+  // ... your code to update scores in Firebase ...
+  // E.g., await update(ref(db, `scores/`), { ...penalty_updates... });
+
+  // --- 4. Remove player from seat immediately ---
+  try {
+    await set(seatRef, null); // Write null to Firebase to "stand up"
+    console.log(`✅ Firebase seat ${absoluteSeatIndex} cleared by forfeit.`);
+  } catch (error) {
+    console.error(`❌ Failed to clear Firebase seat ${absoluteSeatIndex}:`, error);
   }
-  
-  // Reset seat to empty
+
+  // (Rest of your local state update logic: reset seat, clear myAbsoluteSeatedIndex, etc.)
   seats[absoluteSeatIndex] = {
     seatIndex: absoluteSeatIndex,
     occupantType: 'empty',
@@ -3463,18 +3595,12 @@ function unseatPlayer(absoluteSeatIndex) {
     disconnectTimer: null
   };
   
-  // If it was the current user, clear their seated index
   if (absoluteSeatIndex === myAbsoluteSeatedIndex) {
     myAbsoluteSeatedIndex = null;
     myVisualIndex = null;
-    // Reset selected tile index
-    if (gameState) {
-      gameState.selectedIndex = -1;
-    }
-    console.log('✅ Current user unseated');
   }
   
-  console.log(`✅ Seat ${absoluteSeatIndex} is now empty`);
+  console.log(`✅ Seat ${absoluteSeatIndex} is now empty (Forfeit)`);
   return true;
 }
 ///
@@ -3948,8 +4074,9 @@ function setupGame() {
   }
   boneyard = gameTiles;
 
+  // ✅ ADD: Initialize board with all required properties
   const board = {
-    tiles: [],
+    tiles: [],  // ✅ Ensure this is always an array
     leftEnd: null,
     rightEnd: null,
     offsetX: 0,
@@ -3988,7 +4115,7 @@ function setupGame() {
   return {
     players, 
     boneyard, 
-    board, 
+    board,  // ✅ Now guaranteed to have tiles: []
     prevBoard: null, 
     gameOver: false, 
     roundHistory, 
@@ -4040,6 +4167,12 @@ function startNewGame() {
   
   document.getElementById('new-game').style.display = 'none';
   gameState = setupGame();
+  
+    // ✅ ADD: Save initial game state
+  if (!window.trainingMode) {
+    saveGameStateToFirebase(gameState);
+  }
+  
   renderGame(gameState);
   
   // NEW: Auto-play bots continuously until a human's turn or game over
@@ -6060,10 +6193,39 @@ function handleTileClick(gameState, tileIndex, playButtons) {
   renderGame(gameState);
 }
 ///
-// Fixed playTile function - Add drawing tracking to roundHistory
 function playTile(gameState, tile, end) {
+  // ✅ ADD: Safety check for gameState
+  if (!gameState) {
+    console.error("❌ playTile: gameState is null");
+    return false;
+  }
+  
+  // ✅ ADD: Safety check for required properties
+  if (!gameState.players || !gameState.board) {
+    console.error("❌ playTile: Invalid gameState structure");
+    return false;
+  }
+  
   const { players, board, roundHistory, isThisFirstGame, playerOrder, boneyard } = gameState;
+  
+  // ✅ ADD: Initialize board.tiles if it doesn't exist
+  if (!board.tiles) {
+    board.tiles = [];
+  }
+  
+  // ✅ ADD: Safety check for currentActivePlayerTurn
+  if (typeof currentActivePlayerTurn !== 'number' || currentActivePlayerTurn < 0 || currentActivePlayerTurn >= players.length) {
+    console.error("❌ playTile: Invalid currentActivePlayerTurn", currentActivePlayerTurn);
+    return false;
+  }
+  
   const playerHand = players[currentActivePlayerTurn];
+  
+  // ✅ ADD: Safety check for playerHand
+  if (!Array.isArray(playerHand)) {
+    console.error("❌ playTile: Invalid playerHand", playerHand);
+    return false;
+  }
   
   // ✅ FIX: Add safety check for tile parameter
   if (!tile || typeof tile !== 'object' || tile.top === undefined || tile.bottom === undefined) {
@@ -6107,9 +6269,7 @@ function playTile(gameState, tile, end) {
 
   const playedTile = playerHand.splice(tileIndex, 1)[0];
 
-  //if (currentActivePlayerTurn === 0) {
-    gameState.selectedIndex = -1;
- // }
+  gameState.selectedIndex = -1;
 
   const handBeforePlay = [...playerHand, playedTile];
 
@@ -6288,9 +6448,52 @@ function playTile(gameState, tile, end) {
       playAI(gameState);
     }
   }
+  
+  // ✅ ADD THIS: Save game state after every move
+  if (!window.trainingMode) {
+    saveGameStateToFirebase(gameState);
+  }
+  
   return true;
 }
- ///   
+ /// 
+
+///
+// Save game state to Firebase (with fallback)
+async function saveGameStateToFirebase(gameState) {
+  if (!currentTable || window.trainingMode) return;
+  
+  // Also save locally as backup
+  try {
+    localStorage.setItem('gameState_backup', JSON.stringify({
+      ...gameState,
+      currentActivePlayerTurn,
+      timestamp: Date.now()
+    }));
+  } catch (e) {
+    console.warn("Local save failed:", e);
+  }
+  
+  // Try Firebase save
+  try {
+    const gameStateRef = ref(db, `tables/${currentTable.game}/${currentTable.tableId}/gameState`);
+    await set(gameStateRef, {
+      players: gameState.players,
+      board: gameState.board,
+      boneyard: gameState.boneyard,
+      gameOver: gameState.gameOver,
+      roundHistory: gameState.roundHistory,
+      isThisFirstGame: gameState.isThisFirstGame,
+      playerOrder: gameState.playerOrder,
+      currentActivePlayerTurn: currentActivePlayerTurn,
+      lastUpdated: Date.now()
+    });
+    console.log("💾 Game state saved to Firebase");
+  } catch (error) {
+    console.warn("⚠️ Firebase save failed, using local backup:", error.message);
+  }
+}
+/// 
 	function getPreviousPlayer(p, playerOrder) {
       const idx = playerOrder.indexOf(p);
       return playerOrder[(idx - 1 + playerOrder.length) % playerOrder.length];
@@ -6697,93 +6900,611 @@ function isMyVisualSeat(visualIndex) {
   return myAbsoluteSeatedIndex !== null && visualIndex === 0;
 }
 // UPDATED renderGame function - use currentActivePlayerTurn
+
+///NEW rendering
 function renderGame(gameState) {
   // CRITICAL: Block ALL rendering during training
   if (window.trainingMode) return;
+
+  // ✅ ADD SAFETY CHECK
+  if (!gameState) {
+    console.error("❌ renderGame called with null gameState");
+    return;
+  }
+
+  const maxSeats = currentTable && currentTable.config ? currentTable.config.maxSeats : 4;
+
+  // ✅ ADD SAFETY CHECK with default values
+  const { 
+    players = [[], [], [], []], 
+    board = { tiles: [], leftEnd: null, rightEnd: null, offsetX: 0, offsetY: 0 }, 
+    gameOver = false, 
+    isThisFirstGame = false 
+  } = gameState || {};
   
-  //requestAnimationFrame(() => {
-    const {players, board, gameOver, selectedIndex, isThisFirstGame} = gameState;
-// Safety check: If selectedIndex is invalid, reset it silently
-  if (myAbsoluteSeatedIndex !== null && 
-      selectedIndex >= 0 && 
+  // ✅ ADD ANOTHER SAFETY CHECK
+  if (!players || !board) {
+    console.error("❌ Invalid gameState structure");
+    return;
+  }
+
+  // selectedIndex kept in gameState
+  if (typeof gameState.selectedIndex === 'undefined') gameState.selectedIndex = -1;
+
+  // Safety check: If selectedIndex is invalid, reset it silently
+  if (myAbsoluteSeatedIndex !== null &&
+      gameState.selectedIndex >= 0 &&
       players[myAbsoluteSeatedIndex]) {
-    const handSize = players[myAbsoluteSeatedIndex].length;
-    if (selectedIndex >= handSize) {
-      gameState.selectedIndex = -1; // Reset silently, no warning needed
+    const handSize = (players[myAbsoluteSeatedIndex] || []).length;
+    if (gameState.selectedIndex >= handSize) {
+      gameState.selectedIndex = -1; // Reset silently
     }
   }
-	
-    const tableDiv = document.getElementById('table');
 
-    tableDiv.innerHTML = '';
-    board.tiles.forEach(({tile, x, y, isHorizontal}, index) => {
-      const tileDiv = document.createElement('div');
-      tileDiv.className = 'table-tile';
-      if (isHorizontal) tileDiv.classList.add('horizontal');
-      if (board.tiles.length === 1 && index === 0 && isDouble(tile)) {
-        tileDiv.classList.add('first-double');
+  const tableDiv = document.getElementById('table');
+  if (!tableDiv) return;
+
+  tableDiv.innerHTML = '';
+
+  (board.tiles || []).forEach(({ tile, x, y, isHorizontal }, index) => {
+    const tileDiv = document.createElement('div');
+    tileDiv.className = 'table-tile';
+    if (isHorizontal) tileDiv.classList.add('horizontal');
+    if ((board.tiles || []).length === 1 && index === 0 && isDouble(tile)) {
+      tileDiv.classList.add('first-double');
+    }
+
+    if (!gameOver) {
+      let isLeftEnd = index === (board.leftEnd ? board.leftEnd.tileIndex : -1);
+      let isRightEnd = index === (board.rightEnd ? board.rightEnd.tileIndex : -1);
+      let isDoubleEnd = isDouble(tile);
+      if (isLeftEnd) {
+        const openSide = board.leftEnd.openSide;
+        if (isHorizontal) {
+          if (openSide === 'left') tileDiv.classList.add(isDoubleEnd ? 'double-end-left' : 'end-left');
+          else if (openSide === 'right') tileDiv.classList.add(isDoubleEnd ? 'double-end-right' : 'end-right');
+        } else {
+          if (openSide === 'up') tileDiv.classList.add(isDoubleEnd ? 'double-end-top' : 'end-top');
+          else if (openSide === 'down') tileDiv.classList.add(isDoubleEnd ? 'double-end-bottom' : 'end-bottom');
+        }
       }
+      if (isRightEnd) {
+        const openSide = board.rightEnd.openSide;
+        if (isHorizontal) {
+          if (openSide === 'left') tileDiv.classList.add(isDoubleEnd ? 'double-end-left' : 'end-left');
+          else if (openSide === 'right') tileDiv.classList.add(isDoubleEnd ? 'double-end-right' : 'end-right');
+        } else {
+          if (openSide === 'up') tileDiv.classList.add(isDoubleEnd ? 'double-end-top' : 'end-top');
+          else if (openSide === 'down') tileDiv.classList.add(isDoubleEnd ? 'double-end-bottom' : 'end-bottom');
+        }
+      }
+    }
 
+    let tileData;
+    if (isHorizontal) tileData = { left: tile.bottom, right: tile.top };
+    else tileData = tile;
+
+    tileDiv.innerHTML = generateTileSvg(isHorizontal, tileData);
+    tileDiv.style.left = `${x + (board.offsetX || 0)}px`;
+    tileDiv.style.top = `${y + (board.offsetY || 0)}px`;
+    tableDiv.appendChild(tileDiv);
+  });
+
+  let leftPlaceholder = null;
+  let rightPlaceholder = null;
+
+  // placeholders only if it's my turn and we have a seated local index
+  if (!gameOver && isMyTurn() && myAbsoluteSeatedIndex !== null && (board.tiles || []).length > 0) {
+    const dummyTile = { top: 0, bottom: 0 };
+    const tableRect = tableDiv.getBoundingClientRect();
+
+    // Use the player's actual absolute seat. Fallback to players[0] if not seated yet.
+    const hand = (typeof myAbsoluteSeatedIndex === 'number' && myAbsoluteSeatedIndex !== null && players[myAbsoluteSeatedIndex])
+      ? players[myAbsoluteSeatedIndex]
+      : (players[0] || []);
+
+    // Capture the current state of dragged and selected tiles
+    const currentDraggedTile = draggedTile; // global drag state
+    const currentSelectedTile = (gameState.selectedIndex !== -1 && hand && hand[gameState.selectedIndex])
+      ? hand[gameState.selectedIndex]
+      : null;
+
+    // The "active" tile is the one we must check. Dragging takes priority.
+    const activeTile = currentDraggedTile || currentSelectedTile;
+
+    function canShowForEnd(endValue) {
+      if (activeTile) {
+        return canPlayOnEnd(activeTile, endValue);
+      }
+      return (hand || []).some(t => canPlayOnEnd(t, endValue));
+    }
+
+    const leftEndVal = board.leftEnd ? board.leftEnd.value : null;
+    const rightEndVal = board.rightEnd ? board.rightEnd.value : null;
+    const shouldShowLeft = leftEndVal !== null && canShowForEnd(leftEndVal);
+    const shouldShowRight = rightEndVal !== null && canShowForEnd(rightEndVal);
+
+    if (shouldShowLeft) {
+      const leftPlacement = calculatePlacement(board, 'left', tableRect, dummyTile);
+      leftPlaceholder = document.createElement('div');
+      leftPlaceholder.className = 'table-tile placeholder';
+      if (leftPlacement.isHorizontal) leftPlaceholder.classList.add('horizontal');
+      leftPlaceholder.style.left = `${leftPlacement.x + (board.offsetX || 0)}px`;
+      leftPlaceholder.style.top = `${leftPlacement.y + (board.offsetY || 0)}px`;
+      leftPlaceholder.style.border = '2px dashed #6a6a6a';
+      tableDiv.appendChild(leftPlaceholder);
+
+      leftPlaceholder.ondragover = (e) => {
+        e.preventDefault();
+        if (draggedTile && canPlayOnEnd(draggedTile, leftEndVal)) leftPlaceholder.style.border = '2px dashed yellow';
+      };
+      leftPlaceholder.ondragleave = () => { leftPlaceholder.style.border = '2px dashed #6a6a6a'; };
+
+      leftPlaceholder.ondrop = (e) => {
+        e.preventDefault();
+        leftPlaceholder.style.border = '2px dashed #6a6a6a';
+        try {
+          const tileData = JSON.parse(e.dataTransfer.getData('text/plain'));
+          if (!canPlayOnEnd(tileData, leftEndVal)) return;
+          playTile(gameState, tileData, 'left');
+        } catch (err) {}
+      };
+
+      leftPlaceholder.onclick = (e) => {
+        e.stopPropagation();
+        if (gameState.selectedIndex !== -1 && myAbsoluteSeatedIndex !== null) {
+          const selectedTile = (players[myAbsoluteSeatedIndex] || [])[gameState.selectedIndex];
+          if (selectedTile && canPlayOnEnd(selectedTile, leftEndVal)) {
+            playTile(gameState, selectedTile, 'left');
+          }
+        }
+      };
+    }
+
+    if (shouldShowRight) {
+      const rightPlacement = calculatePlacement(board, 'right', tableRect, dummyTile);
+      rightPlaceholder = document.createElement('div');
+      rightPlaceholder.className = 'table-tile placeholder';
+      if (rightPlacement.isHorizontal) rightPlaceholder.classList.add('horizontal');
+      rightPlaceholder.style.left = `${rightPlacement.x + (board.offsetX || 0)}px`;
+      rightPlaceholder.style.top = `${rightPlacement.y + (board.offsetY || 0)}px`;
+      rightPlaceholder.style.border = '2px dashed #6a6a6a';
+      tableDiv.appendChild(rightPlaceholder);
+
+      rightPlaceholder.ondragover = (e) => {
+        e.preventDefault();
+        if (draggedTile && canPlayOnEnd(draggedTile, rightEndVal)) rightPlaceholder.style.border = '2px dashed yellow';
+      };
+      rightPlaceholder.ondragleave = () => { rightPlaceholder.style.border = '2px dashed #6a6a6a'; };
+
+      rightPlaceholder.ondrop = (e) => {
+        e.preventDefault();
+        rightPlaceholder.style.border = '2px dashed #6a6a6a';
+        try {
+          const tileData = JSON.parse(e.dataTransfer.getData('text/plain'));
+          if (!canPlayOnEnd(tileData, rightEndVal)) return;
+          playTile(gameState, tileData, 'right');
+        } catch (err) {}
+      };
+
+      rightPlaceholder.onclick = (e) => {
+        e.stopPropagation();
+        if (gameState.selectedIndex !== -1 && myAbsoluteSeatedIndex !== null) {
+          const selectedTile = (players[myAbsoluteSeatedIndex] || [])[gameState.selectedIndex];
+          if (selectedTile && canPlayOnEnd(selectedTile, rightEndVal)) {
+            playTile(gameState, selectedTile, 'right');
+          }
+        }
+      };
+    }
+  } else {
+    // If we are not in placeholder-mode ensure no leftover UI styles remain
+    // (placeholders were local so nothing to remove explicitly)
+  }
+
+  // Table drag handlers for empty board play
+  if (!gameOver && isMyTurn() && myAbsoluteSeatedIndex !== null) {
+    if ((board.tiles || []).length === 0) {
+      tableDiv.ondragover = (e) => e.preventDefault();
+      tableDiv.ondrop = (e) => {
+        e.preventDefault();
+        try {
+          const tileData = JSON.parse(e.dataTransfer.getData('text/plain'));
+          playTile(gameState, tileData, 'right');
+        } catch (err) {}
+      };
+
+      tableDiv.onclick = (e) => {
+        if (e.target === tableDiv && gameState.selectedIndex !== -1 && myAbsoluteSeatedIndex !== null) {
+          const selectedTile = (players[myAbsoluteSeatedIndex] || [])[gameState.selectedIndex];
+          if (selectedTile) playTile(gameState, selectedTile, 'right');
+        }
+      };
+    } else {
+      // Remove general table click/drag handlers when board has tiles
+      tableDiv.onclick = null;
+      tableDiv.ondragover = null;
+      tableDiv.ondrop = null;
+    }
+  }
+
+  // Render each visual hand (visualIndex 0..maxSeats-1)
+  document.querySelectorAll('.player-hand').forEach((handEl, visualIndex) => {
+    // Convert visual index to absolute index for data lookup (include maxSeats)
+    const absoluteIndex = getAbsoluteIndex(visualIndex, myAbsoluteSeatedIndex, maxSeats);
+
+    // Always show/hide seats according to active seat list
+    handEl.style.display = 'flex';
+    handEl.innerHTML = '';
+
+    // Get seat info using absolute index
+    const seatInfo = getSeatDisplayInfo(absoluteIndex) || { occupantType: 'empty', displayName: 'Empty', score: 0, isMySeat: false };
+
+    const scoreDiv = document.createElement('div');
+    scoreDiv.className = 'score';
+
+    // Get score from seat info
+    const scoreValue = (typeof seatInfo.score !== 'undefined' && seatInfo.score !== null) ? seatInfo.score : (scores && typeof scores[absoluteIndex] !== 'undefined' ? scores[absoluteIndex] : 0);
+    const scoreText = scoreValue < 0 ? '-$' + Math.abs(scoreValue) : '$' + scoreValue;
+    const scoreLength = String(scoreText).length;
+    const numCoins = Math.max(3, Math.ceil(scoreLength / 2));
+    const coinsHtml = '<span class="coin">🪙</span>'.repeat(numCoins);
+
+    let coinColorClass = 'yellow';
+    if (scoreValue >= 1000000000) coinColorClass = 'red';
+    else if (scoreValue >= 500000000) coinColorClass = 'orange';
+    else if (scoreValue >= 100000000) coinColorClass = 'violet';
+    else if (scoreValue <= -1) coinColorClass = 'silver';
+
+    const playerLabel = seatInfo.displayName || 'Empty';
+
+    // Check if this visual position has the current turn
+    const hasCurrentTurn = (typeof currentActivePlayerTurn !== 'undefined' && absoluteIndex === currentActivePlayerTurn);
+
+    if (seatInfo.occupantType !== 'empty') {
+      scoreDiv.innerHTML = `<span class="score-arrow">${!gameOver && hasCurrentTurn ? '➤' : ''}</span><span class="score-text">[${playerLabel}]</span><div class="score-number"><div class="coins-container ${coinColorClass}">${coinsHtml}</div><span class="score-text" style="position: absolute; top: 50%; left: 50%;top: -1px; transform: translate(calc(-50% - 10px), calc(-50% + 3px)); z-index: 2; color: black;">${scoreText}</span></div>`;
+
+      if (seatInfo.isMySeat) {
+        scoreDiv.style.cursor = 'pointer';
+        scoreDiv.style.pointerEvents = 'auto';
+        scoreDiv.onclick = (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          const currentUser = JSON.parse(localStorage.getItem('loggedUser') || 'null');
+          if (currentUser) {
+            unseatPlayer(absoluteIndex);
+            renderGame(gameState);
+          }
+        };
+        scoreDiv.onmouseenter = () => {
+          scoreDiv.style.transform = 'scale(1.1)';
+          scoreDiv.style.textShadow = '0 0 10px #ff0';
+        };
+        scoreDiv.onmouseleave = () => {
+          scoreDiv.style.transform = 'scale(1)';
+          scoreDiv.style.textShadow = '0 0 5px #fff';
+        };
+      }
+    } else {
+      scoreDiv.innerHTML = `<span class="score-text" style="cursor: pointer; color: #0f0; font-weight: bold; pointer-events: auto;">${playerLabel}</span>`;
       if (!gameOver) {
-        let isLeftEnd = index === (board.leftEnd ? board.leftEnd.tileIndex : -1);
-        let isRightEnd = index === (board.rightEnd ? board.rightEnd.tileIndex : -1);
-        let isDoubleEnd = isDouble(tile);
-        if (isLeftEnd) {
-          const openSide = board.leftEnd.openSide;
-          if (isHorizontal) {
-            if (openSide === 'left') tileDiv.classList.add(isDoubleEnd ? 'double-end-left' : 'end-left');
-            else if (openSide === 'right') tileDiv.classList.add(isDoubleEnd ? 'double-end-right' : 'end-right');
-          } else {
-            if (openSide === 'up') tileDiv.classList.add(isDoubleEnd ? 'double-end-top' : 'end-top');
-            else if (openSide === 'down') tileDiv.classList.add(isDoubleEnd ? 'double-end-bottom' : 'end-bottom');
+        scoreDiv.style.cursor = 'pointer';
+        scoreDiv.style.pointerEvents = 'auto';
+        scoreDiv.onclick = (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          const currentUser = JSON.parse(localStorage.getItem('loggedUser') || 'null');
+          if (currentUser && myAbsoluteSeatedIndex === null) {
+            const seated = seatPlayer(absoluteIndex, currentUser.uid, currentUser.userName, scores && scores[absoluteIndex]);
+            if (seated) {
+              debugRotation();
+              renderGame(gameState);
+            }
+          } else if (myAbsoluteSeatedIndex !== null) {
+            safeAlert('You are already seated! Click your name to unsit first.');
+          }
+        };
+        scoreDiv.onmouseenter = () => {
+          if (myAbsoluteSeatedIndex === null) {
+            scoreDiv.style.transform = 'scale(1.1)';
+            scoreDiv.style.textShadow = '0 0 10px #0f0';
+          }
+        };
+        scoreDiv.onmouseleave = () => {
+          scoreDiv.style.transform = 'scale(1)';
+          scoreDiv.style.textShadow = '0 0 5px #fff';
+        };
+      }
+    }
+
+    const tilesContainer = document.createElement('div');
+    tilesContainer.className = 'tiles-container';
+
+    // Determine tiles count safely
+    const playerTiles = players[absoluteIndex] || [];
+    const numTiles = playerTiles.length;
+
+    let highestDoubleInHand = null;
+    // Check if MY seat (visual South = visualIndex 0) has the first move
+    if (!gameOver && visualIndex === 0 && myAbsoluteSeatedIndex !== null && (board.tiles || []).length === 0 && isThisFirstGame) {
+      if (gameState.highestDouble) highestDoubleInHand = gameState.highestDouble;
+    }
+
+    const rootStyle = getComputedStyle(document.documentElement);
+    const tileWidth = parseFloat(rootStyle.getPropertyValue('--tile-width')) || 60;
+    const tileHeight = parseFloat(rootStyle.getPropertyValue('--tile-height')) || 90;
+    const tileGap = parseFloat(rootStyle.getPropertyValue('--tile-gap')) || 8;
+
+    let containerWidth = window.innerWidth - 20;
+    let containerHeight = window.innerHeight - 20;
+    let overlapStyle = '';
+
+    // Visual index 0 (South) and 2 (North) are horizontal
+    if (visualIndex === 0 || visualIndex === 2) {
+      const totalWidth = numTiles * tileWidth + (numTiles - 1) * tileGap;
+      if (totalWidth > containerWidth && numTiles > 1) {
+        tilesContainer.classList.add('overlapped', 'horizontal');
+        const overlap = (totalWidth - containerWidth) / (numTiles - 1);
+        overlapStyle = `margin-left: -${overlap.toFixed(2)}px;`;
+      }
+    } else {
+      // Visual index 1 (East) and 3 (West) are vertical
+      const totalHeight = numTiles * tileHeight + (numTiles - 1) * tileGap;
+      if (totalHeight > containerHeight && numTiles > 1) {
+        tilesContainer.classList.add('overlapped', 'vertical');
+        const overlap = (totalHeight - containerHeight) / (numTiles - 1);
+        overlapStyle = `margin-top: -${overlap.toFixed(2)}px;`;
+      }
+    }
+
+    if (overlapStyle) {
+      const styleElement = document.createElement('style');
+      styleElement.textContent = `
+        .player-hand[data-player="${visualIndex}"] .tiles-container.overlapped > .tile:not(:first-child) {
+          ${overlapStyle}
+        }
+      `;
+      handEl.appendChild(styleElement);
+    }
+
+    // Show play buttons only for MY seat (visual South = index 0)
+    let playButtons = null;
+    if (!gameOver && visualIndex === 0 && myAbsoluteSeatedIndex !== null) {
+      playButtons = document.createElement('div');
+      playButtons.className = 'play-buttons';
+      playButtons.innerHTML = `<button class="play-left">Play </button><button class="play-right">Play </button>`;
+      playButtons.querySelectorAll('button').forEach(btn => btn.style.display = 'none');
+    }
+
+    // Only render tiles if seat is occupied
+    if (seatInfo.occupantType !== 'empty') {
+      playerTiles.forEach((tile, tileIdx) => {
+        const tileDiv = document.createElement('div');
+        tileDiv.className = 'tile';
+
+        // Show closed tiles for all seats EXCEPT my seat (visual South)
+        const isSouth = isMyVisualSeat(visualIndex);
+        if (!gameOver && !isSouth && tileMode === 'Close') {
+          tileDiv.innerHTML = generateBackTileSvg(false);
+        } else {
+          tileDiv.innerHTML = generateTileSvg(false, tile);
+          tileDiv.dataset.top = tile.top;
+          tileDiv.dataset.bottom = tile.bottom;
+
+          // Only enable interaction for MY seat (visual South = index 0)
+          if (!gameOver && visualIndex === 0 && myAbsoluteSeatedIndex !== null) {
+            tileDiv.style.cursor = 'pointer';
+
+            tileDiv.onclick = (e) => {
+              initAudioContext();
+              if (!soundLocked) canPlaySound = true;
+              e.stopPropagation();
+              if (tileDiv.dataset.justMoved === 'true') {
+                delete tileDiv.dataset.justMoved;
+                return;
+              }
+              handleTileClick(gameState, tileIdx, playButtons);
+            };
+
+            if (gameState.selectedIndex === tileIdx) tileDiv.classList.add('selected');
+
+            let isPlayable = false;
+            if ((board.tiles || []).length === 0) {
+              if (isThisFirstGame) {
+                if (gameState.highestDouble && (tile.top === gameState.highestDouble.top && tile.bottom === gameState.highestDouble.bottom)) {
+                  isPlayable = true;
+                }
+              } else {
+                isPlayable = true;
+              }
+            } else {
+              isPlayable = canPlayTile(tile, board);
+            }
+
+            if (isPlayable && isMyTurn()) {
+              tileDiv.classList.add('draggable');
+              tileDiv.draggable = true;
+
+              tileDiv.ondragstart = (e) => {
+                initAudioContext();
+                if (!soundLocked) canPlaySound = true;
+                draggedTile = tile;
+                gameState.selectedIndex = -1;
+                e.dataTransfer.setData('text/plain', JSON.stringify(tile));
+              };
+
+              tileDiv.addEventListener('touchstart', (e) => {
+                initAudioContext();
+                if (!soundLocked) canPlaySound = true;
+                draggedTile = tile;
+                gameState.selectedIndex = -1;
+
+                const touch = e.touches[0];
+                const ghost = tileDiv.cloneNode(true);
+                ghost.style.position = 'fixed';
+                ghost.style.pointerEvents = 'none';
+                ghost.style.zIndex = 1000;
+                document.body.appendChild(ghost);
+                ghost.style.left = `${touch.clientX - ghost.offsetWidth / 2}px`;
+                ghost.style.top = `${touch.clientY - ghost.offsetHeight / 2}px`;
+                let moved = false;
+
+                const onTouchMove = (ev) => {
+                  if (ev.cancelable) ev.preventDefault();
+                  if (ev.touches.length === 1) {
+                    moved = true;
+                    const t = ev.touches[0];
+                    ghost.style.left = `${t.clientX - ghost.offsetWidth / 2}px`;
+                    ghost.style.top = `${t.clientY - ghost.offsetHeight / 2}px`;
+                    if ((board.tiles || []).length > 0) {
+                      if (leftPlaceholder) leftPlaceholder.style.border = '2px dashed #6a6a6a';
+                      if (rightPlaceholder) rightPlaceholder.style.border = '2px dashed #6a6a6a';
+                      const dropX = t.clientX;
+                      const dropY = t.clientY;
+                      if (leftPlaceholder && canPlayOnEnd(draggedTile, board.leftEnd.value)) {
+                        const leftRect = leftPlaceholder.getBoundingClientRect();
+                        if (dropX > leftRect.left && dropX < leftRect.right && dropY > leftRect.top && dropY < leftRect.bottom) {
+                          leftPlaceholder.style.border = '2px dashed yellow';
+                        }
+                      }
+                      if (rightPlaceholder && canPlayOnEnd(draggedTile, board.rightEnd.value)) {
+                        const rightRect = rightPlaceholder.getBoundingClientRect();
+                        if (dropX > rightRect.left && dropX < rightRect.right && dropY > rightRect.top && dropY < rightRect.bottom) {
+                          rightPlaceholder.style.border = '2px dashed yellow';
+                        }
+                      }
+                    }
+                  }
+                };
+
+                const onTouchEnd = (ev) => {
+                  document.removeEventListener('touchmove', onTouchMove);
+                  document.removeEventListener('touchend', onTouchEnd);
+                  ghost.remove();
+                  if ((board.tiles || []).length > 0) {
+                    if (leftPlaceholder) leftPlaceholder.style.border = '2px dashed #6a6a6a';
+                    if (rightPlaceholder) rightPlaceholder.style.border = '2px dashed #6a6a6a';
+                  }
+                  if (!moved) {
+                    draggedTile = null;
+                    return;
+                  }
+                  if (moved) tileDiv.dataset.justMoved = 'true';
+                  const dropTouch = ev.changedTouches[0] || { clientX: 0, clientY: 0 };
+                  let dropped = false;
+                  const dropX = dropTouch.clientX;
+                  const dropY = dropTouch.clientY;
+                  if ((board.tiles || []).length === 0) {
+                    const tableRect = tableDiv.getBoundingClientRect();
+                    if (dropX > tableRect.left && dropX < tableRect.right && dropY > tableRect.top && dropY < tableRect.bottom) {
+                      playTile(gameState, draggedTile, 'right');
+                      dropped = true;
+                    }
+                  } else {
+                    if (leftPlaceholder) {
+                      const leftRect = leftPlaceholder.getBoundingClientRect();
+                      if (dropX > leftRect.left && dropX < leftRect.right && dropY > leftRect.top && dropY < leftRect.bottom) {
+                        if (canPlayOnEnd(draggedTile, board.leftEnd.value)) {
+                          playTile(gameState, draggedTile, 'left');
+                          dropped = true;
+                        }
+                      }
+                    }
+                    if (!dropped && rightPlaceholder) {
+                      const rightRect = rightPlaceholder.getBoundingClientRect();
+                      if (dropX > rightRect.left && dropX < rightRect.right && dropY > rightRect.top && dropY < rightRect.bottom) {
+                        if (canPlayOnEnd(draggedTile, board.rightEnd.value)) {
+                          playTile(gameState, draggedTile, 'right');
+                          dropped = true;
+                        }
+                      }
+                    }
+                  }
+                  draggedTile = null;
+                };
+
+                document.addEventListener('touchmove', onTouchMove, { passive: false });
+                document.addEventListener('touchend', onTouchEnd, { passive: false });
+              }, { passive: true });
+            }
           }
         }
-        if (isRightEnd) {
-          const openSide = board.rightEnd.openSide;
-          if (isHorizontal) {
-            if (openSide === 'left') tileDiv.classList.add(isDoubleEnd ? 'double-end-left' : 'end-left');
-            else if (openSide === 'right') tileDiv.classList.add(isDoubleEnd ? 'double-end-right' : 'end-right');
+        tilesContainer.appendChild(tileDiv);
+      });
+    }
+
+    // Visual index 2 (north) show score above tiles
+    if (visualIndex === 2) {
+      handEl.appendChild(scoreDiv);
+      handEl.appendChild(tilesContainer);
+    } else {
+      handEl.appendChild(tilesContainer);
+      handEl.appendChild(scoreDiv);
+    }
+
+    if (playButtons) {
+      handEl.appendChild(playButtons);
+      if (isMyTurn() && gameState.selectedIndex !== -1 && players[myAbsoluteSeatedIndex]) {
+        const selectedTileData = (players[myAbsoluteSeatedIndex] || [])[gameState.selectedIndex];
+        const leftBtn = playButtons.querySelector('.play-left');
+        const rightBtn = playButtons.querySelector('.play-right');
+        leftBtn.style.display = 'none';
+        rightBtn.style.display = 'none';
+
+        if ((board.tiles || []).length === 0) {
+          if (isThisFirstGame) {
+            if (gameState.highestDouble && selectedTileData && (selectedTileData.top === gameState.highestDouble.top && selectedTileData.bottom === gameState.highestDouble.bottom)) {
+              rightBtn.style.display = 'inline-block';
+              rightBtn.textContent = `Play First`;
+              rightBtn.onclick = () => { const currentSelected = (players[myAbsoluteSeatedIndex] || [])[gameState.selectedIndex]; playTile(gameState, currentSelected, 'right'); };
+            }
           } else {
-            if (openSide === 'up') tileDiv.classList.add(isDoubleEnd ? 'double-end-top' : 'end-top');
-            else if (openSide === 'down') tileDiv.classList.add(isDoubleEnd ? 'double-end-bottom' : 'end-bottom');
+            rightBtn.style.display = 'inline-block';
+            rightBtn.textContent = `Play First`;
+            rightBtn.onclick = () => { const currentSelected = (players[myAbsoluteSeatedIndex] || [])[gameState.selectedIndex]; playTile(gameState, currentSelected, 'right'); };
+          }
+        } else {
+          const leftEnd = board.leftEnd ? board.leftEnd.value : null;
+          const rightEnd = board.rightEnd ? board.rightEnd.value : null;
+          if (selectedTileData && leftEnd !== null && canPlayOnEnd(selectedTileData, leftEnd)) {
+            leftBtn.style.display = 'inline-block';
+            leftBtn.textContent = `Play Left ${leftEnd}`;
+            leftBtn.onclick = () => { const currentSelected = (players[myAbsoluteSeatedIndex] || [])[gameState.selectedIndex]; playTile(gameState, currentSelected, 'left'); };
+          }
+          if (selectedTileData && rightEnd !== null && canPlayOnEnd(selectedTileData, rightEnd)) {
+            rightBtn.style.display = 'inline-block';
+            rightBtn.textContent = `Play Right ${rightEnd}`;
+            rightBtn.onclick = () => { const currentSelected = (players[myAbsoluteSeatedIndex] || [])[gameState.selectedIndex]; playTile(gameState, currentSelected, 'right'); };
           }
         }
       }
+    }
+  });
 
-      let tileData;
-      if (isHorizontal) {
-        tileData = { left: tile.bottom, right: tile.top };
-      } else {
-        tileData = tile;
-      }
-      tileDiv.innerHTML = generateTileSvg(isHorizontal, tileData);
-      tileDiv.style.left = `${x + board.offsetX}px`;
-      tileDiv.style.top = `${y + board.offsetY}px`;
-      tableDiv.appendChild(tileDiv);
-    });
+  // Boneyard rendering
+  const boneyardDiv = document.getElementById('boneyard');
+  if (gameState.boneyard && gameState.boneyard.length > 0 && gameState.playerOrder && gameState.playerOrder.length < 4) {
+    boneyardDiv.style.display = 'block';
+    const tilesDiv = document.getElementById('boneyard-tiles');
+    tilesDiv.innerHTML = '';
+    for (let i = 0; i < gameState.boneyard.length; i++) {
+      const rect = document.createElement('div');
+      rect.style.width = '6px';
+      rect.style.height = '12px';
+      rect.style.background = 'black';
+      rect.style.border = '1px solid #222';
+      rect.style.borderRadius = '2px';
+      tilesDiv.appendChild(rect);
+    }
+  } else {
+    if (boneyardDiv) boneyardDiv.style.display = 'none';
+  }
+}
+///
 
-    let leftPlaceholder = null;
-    let rightPlaceholder = null;		 
+///     
 
-if (!gameOver && isMyTurn() && myAbsoluteSeatedIndex !== null && board.tiles.length > 0) {     
-
-     const dummyTile = {top: 0, bottom: 0};
-      const tableRect = tableDiv.getBoundingClientRect();
-      const hand = players[0];
-
-// Capture the current state of dragged and selected tiles
-      const currentDraggedTile = draggedTile; // The tile being actively dragged (global)
-      const currentSelectedTile = (selectedIndex !== -1) ? hand[selectedIndex] : null; // The tile that is clicked/selected
-      
-      // The "active" tile is the one we must check. Dragging takes priority.
-      const activeTile = currentDraggedTile || currentSelectedTile;
-
-      /**
-       * Determines if a placeholder should be shown for a given end value.
-       * - If a tile is being dragged or is selected, it checks ONLY that tile.
-       * - Otherwise, it checks if ANY tile in the hand is playable.
-       */
-      function canShowForEnd(endValue) {
+	 function canShowForEnd(endValue) {
         if (activeTile) {
           // If we are dragging OR have a tile selected, check ONLY that tile.
           return canPlayOnEnd(activeTile, endValue);
@@ -6791,7 +7512,7 @@ if (!gameOver && isMyTurn() && myAbsoluteSeatedIndex !== null && board.tiles.len
         // If no tile is active, check if ANY tile in the hand can be played.
         return hand.some(t => canPlayOnEnd(t, endValue));
       }
-      
+     
       const shouldShowLeft  = canShowForEnd(board.leftEnd.value);
       const shouldShowRight = canShowForEnd(board.rightEnd.value);
 
@@ -6864,13 +7585,9 @@ rightPlaceholder.ondrop = (e) => {
 				  playTile(gameState, selectedTile, 'right');
 				}
 			  } 
-			};
-      }
-    }
-	else{
-	  if (leftPlaceholder) leftPlaceholder.removeAttribute('style');
-     if (rightPlaceholder) rightPlaceholder.removeAttribute('style');
-	 }
+			};					
+
+	
 
 if (!gameOver && isMyTurn() && myAbsoluteSeatedIndex !== null) {
   if (board.tiles.length === 0) {
@@ -6939,7 +7656,7 @@ document.querySelectorAll('.player-hand').forEach((hand, visualIndex) => {
     scoreDiv.innerHTML = `<span class="score-arrow">${!gameOver && hasCurrentTurn ? '➤' : ''}</span><span class="score-text">[${playerLabel}]</span><div class="score-number"><div class="coins-container ${coinColorClass}">${coinsHtml}</div><span class="score-text" style="position: absolute; top: 50%; left: 50%;top: -1px; transform: translate(calc(-50% - 10px), calc(-50% + 3px)); z-index: 2; color: black;">${scoreText}</span></div>`;
     
 // Make MY seat (visual South) clickable for UNSITTING
-    if (!gameOver && seatInfo.isMySeat) {
+    if (seatInfo.isMySeat) {
       scoreDiv.style.cursor = 'pointer';
       scoreDiv.style.pointerEvents = 'auto';
       
@@ -6965,34 +7682,58 @@ document.querySelectorAll('.player-hand').forEach((hand, visualIndex) => {
         scoreDiv.style.textShadow = '0 0 5px #fff';
       };
     }
+// Inside renderGame, in the .player-hand loop...
   } else {
     // Empty seat - show clickable label
     scoreDiv.innerHTML = `<span class="score-text" style="cursor: pointer; color: #0f0; font-weight: bold; pointer-events: auto;">${playerLabel}</span>`;
     
-// Make empty seat clickable for SITTING
+    // Make empty seat clickable for SITTING
     if (!gameOver) {
       scoreDiv.style.cursor = 'pointer';
       scoreDiv.style.pointerEvents = 'auto';
       
-      scoreDiv.onclick = (e) => {
-        e.stopPropagation(); // Prevent event bubbling
-        e.preventDefault(); // Prevent default behavior
+      // === REPLACE THIS ENTIRE FUNCTION ===
+      scoreDiv.onclick = async (e) => { // Make it async
+        e.stopPropagation();
+        e.preventDefault();
         
         const currentUser = JSON.parse(localStorage.getItem('loggedUser'));
         if (currentUser && myAbsoluteSeatedIndex === null) {
-          console.log(`🔄 Seating player at Absolute Seat ${absoluteIndex}`);
-          // Seat the player at the ABSOLUTE index
-          const seated = seatPlayer(absoluteIndex, currentUser.uid, currentUser.userName, scores[absoluteIndex]);
+          console.log(`🔄 Attempting to seat player at Absolute Seat ${absoluteIndex}`);
+
+          // === FIREBASE FIX (Step 5) ===
+          // 1. Load the player's score from Firebase
+          let userScore;
+          try {
+            const scoreRef = ref(db, `scores/${currentUser.uid}`);
+            const scoreSnap = await get(scoreRef);
+            
+            if (scoreSnap.exists()) {
+              userScore = scoreSnap.val();
+            } else {
+              // Fallback to local score array if no Firebase score exists
+              userScore = scores[absoluteIndex]; 
+              console.warn(`No score found for ${currentUser.uid}, using default.`);
+            }
+          } catch (error) {
+            console.error("Failed to fetch score:", error);
+            userScore = scores[absoluteIndex]; // Fallback on error
+          }
+          // ==============================
+
+          // 2. Call the updated async seatPlayer function
+          const seated = await seatPlayer(absoluteIndex, currentUser.uid, currentUser.userName, userScore);
+          
           if (seated) {
-            // Debug rotation after seating
             debugRotation();
-            renderGame(gameState);
+            renderGame(gameState); // Re-render after successful seating
             console.log(`✅ Player seated at Absolute Seat ${absoluteIndex}, now viewing as South`);
           }
         } else if (myAbsoluteSeatedIndex !== null) {
           safeAlert('You are already seated! Click your name to unsit first.');
         }
       };
+      // === END OF REPLACEMENT ===
       
       scoreDiv.onmouseenter = () => {
         if (myAbsoluteSeatedIndex === null) {
@@ -7293,6 +8034,7 @@ document.querySelectorAll('.player-hand').forEach((hand, visualIndex) => {
     }
   //}); 
 }
+
  /// 
     function centerTilesOnResize() {
       if (!gameState || !gameState.board) return;
