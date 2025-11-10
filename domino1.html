@@ -1497,7 +1497,7 @@
             </label>
         </div>
         <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">
-            Version 4.5.6
+            Version 4.5.7
         </div>
         <div id="betDiv">
             <select id="bets">
@@ -1859,7 +1859,7 @@ function watchAndKickPlayers() {
       // Only check human players
       if (seat && seat.occupantType === 'human' && seat.connectionStatus === 'disconnected' && seat.disconnectTime) {
         
-        const gracePeriod = 15 * 1000; // 15 seconds
+        const gracePeriod = 30 * 1000; // 15 seconds
         const timeElapsed = now - seat.disconnectTime;
 
         if (timeElapsed > gracePeriod) {
@@ -7716,8 +7716,11 @@ async function applyDisconnectPenalty(absoluteSeatIndex) {
     renderGame(gameState);
   }
   
-  // Show alert
-  if (!window.trainingMode) {
+// ✅ Show alert ONLY if penalty was applied
+  if (!window.trainingMode && penalty > 0) {
+    const remainingPlayers = gameState.playerOrder.filter(p => seats[p].occupantType !== 'empty');
+    const share = remainingPlayers.length > 0 ? penalty / remainingPlayers.length : 0;
+    
     safeAlert(`Player ${getPlayerNumber(absoluteSeatIndex)} disconnected!\n\nPenalty: ${abbreviate(penalty)}\nDistributed: ${abbreviate(share)} each to remaining players`);
   }
   
@@ -7744,14 +7747,14 @@ function startDisconnectCountdown(absoluteSeatIndex) {
     clearTimeout(disconnectTimers[absoluteSeatIndex]);
   }
   
-  console.log(`⏱️ Starting 15-second countdown for seat ${absoluteSeatIndex}`);
+  console.log(`⏱️ Starting 30-second countdown for seat ${absoluteSeatIndex}`);
   
   // Start 15-second timer
   disconnectTimers[absoluteSeatIndex] = setTimeout(async () => {
     console.log(`⏰ Countdown expired for seat ${absoluteSeatIndex}`);
     await applyDisconnectPenalty(absoluteSeatIndex);
     delete disconnectTimers[absoluteSeatIndex];
-  }, 15000); // 15 seconds
+  }, 30000); // 15 seconds
 }
 
 // Cancel disconnect countdown (on reconnect)
@@ -8139,7 +8142,7 @@ document.querySelectorAll('.player-hand').forEach((handEl, visualIndex) => {
       statusIndicator = ' 🟢';
     }
     
-    scoreDiv.innerHTML = `<!--span class="score-arrow">${!gameOver && hasCurrentTurn ? '➤' : ''}</span--><span class="score-text">${playerLabel}${statusIndicator}</span><div class="score-number"><div class="coins-container ${coinColorClass}">${coinsHtml}</div><span class="score-text" style="position: absolute; top: 50%; left: 50%;top: -1px; transform: translate(calc(-50% - 10px), calc(-50% + 3px)); z-index: 2; color: black;">${scoreText}</span></div>`;
+    scoreDiv.innerHTML = `<!--span class="score-arrow">${!gameOver && hasCurrentTurn ? '➤' : ''}</span--><span class="score-text">${statusIndicator}${playerLabel}</span><div class="score-number"><div class="coins-container ${coinColorClass}">${coinsHtml}</div><span class="score-text" style="position: absolute; top: 50%; left: 50%;top: -1px; transform: translate(calc(-50% - 10px), calc(-50% + 3px)); z-index: 2; color: black;">${scoreText}</span></div>`;
 
     if (seatInfo.isMySeat) {
       scoreDiv.style.cursor = 'pointer';
@@ -8147,17 +8150,45 @@ document.querySelectorAll('.player-hand').forEach((handEl, visualIndex) => {
       scoreDiv.onclick = (e) => {
         e.stopPropagation();
         e.preventDefault();
-        
-        const confirmUnseat = confirm(`Do you want to unseat?\nIf there's an active game, you will be penalized.`);
-        
-        if (confirmUnseat) {
-          const currentUser = JSON.parse(localStorage.getItem('loggedUser'));
-          if (currentUser) {
-            unseatPlayer(absoluteIndex);
-            renderGame(gameState);
-          }
-        }
-      };
+		
+	// ✅ Check if player has tiles and if game is active
+    let confirmUnseat = false;
+    let warningMessage = '';
+    
+    const myHand = gameState?.players?.[absoluteIndex] || [];
+    const hasActiveTiles = Array.isArray(myHand) && myHand.length > 0;
+    const isGameActive = gameState && !gameState.gameOver && 
+                        gameState.board && gameState.board.tiles && 
+                        gameState.board.tiles.length > 0;
+    
+    if (hasActiveTiles && isGameActive) {
+      // Player is actively playing with tiles
+      const handValue = computePlayerValues(gameState.players)[absoluteIndex];
+      const wouldBePenalty = 2 * handValue * bet;
+      
+      warningMessage = `⚠️ WARNING: Active Game!\n\n` +
+                      //`You have ${myHand.length} tiles in hand.\n` +
+                     // `Hand value: ${handValue} points\n\n` +
+                      `Penalty if you unseat: ${abbreviate(wouldBePenalty)}\n\n` +
+                      `Do you still want to unseat?`;
+      
+      confirmUnseat = confirm(warningMessage);	
+	  }
+	  else{
+	          unseatPlayer(absoluteIndex);
+              renderGame(gameState);
+	  }
+       if (confirmUnseat) {
+      const currentUser = JSON.parse(localStorage.getItem('loggedUser'));
+      if (currentUser) {
+        console.log(`👋 Player manually unseating from Seat ${absoluteIndex}`);
+        unseatPlayer(absoluteIndex);
+        renderGame(gameState);
+      }
+    } else {
+      console.log("❌ Unseat cancelled by user");
+    }
+  };
 	  
     // ✅ FIX: Adjust hover based on seat position
     if (visualIndex === 1 || visualIndex === 3) {
@@ -9397,7 +9428,7 @@ function showDisconnectCountdown(absoluteSeatIndex, remainingSeconds) {
     document.addEventListener("DOMContentLoaded", async () => {
       const startBtn = document.getElementById("start-game-btn");
       const playerOptions = document.querySelectorAll(".player-option");
-      let selectedPlayers = 2;
+      let selectedPlayers = 4;
 
       // Show loading state
       if (startBtn) {
@@ -9434,7 +9465,7 @@ function showDisconnectCountdown(absoluteSeatIndex, remainingSeconds) {
       });
 	  
 	    // Wait a bit for Firebase to initialize
-  setTimeout(() => {
+  /*setTimeout(() => {
     if (!gameState) {
       gameState = { 
         players: [[], [], [], []],
@@ -9451,7 +9482,7 @@ function showDisconnectCountdown(absoluteSeatIndex, remainingSeconds) {
     // Force initial render
     console.log("🎨 Initial render on page load");
     renderGame(gameState);
-  }, 1000);
+  }, 5000);*/
 	  
     });
 </script>
