@@ -1497,7 +1497,7 @@
             </label>
         </div>
         <div style="position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); color: #ccc; font-size: 14px; opacity: 0.8; pointer-events: none;">
-            Version 4.5.5
+            Version 4.5.6
         </div>
         <div id="betDiv">
             <select id="bets">
@@ -7814,7 +7814,7 @@ function watchSeatDisconnections() {
         document.getElementById('table').innerHTML = '';
 
         gameState = setupGame();
-        renderGame(gameState);
+        //renderGame(gameState);<-- double start game, start new game will renderGame(gameState);
         startNewGame();
       };
 
